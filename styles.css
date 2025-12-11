@@ -1,0 +1,158 @@
+/* HelpAI Block Styles */
+
+.block-helpai-container {
+    display: flex;
+    flex-direction: column;
+    height: 500px;
+    max-height: 70vh;
+}
+
+.block-helpai-messages {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px;
+    background-color: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin-bottom: 10px;
+}
+
+.block-helpai-message {
+    margin-bottom: 10px;
+    padding: 8px 12px;
+    border-radius: 6px;
+    max-width: 90%;
+    word-wrap: break-word;
+}
+
+.block-helpai-message-user {
+    background-color: #007bff;
+    color: white;
+    margin-left: auto;
+    text-align: right;
+}
+
+.block-helpai-message-assistant {
+    background-color: #e9ecef;
+    color: #333;
+    margin-right: auto;
+    line-height: 1.6;
+}
+
+.block-helpai-message-assistant strong {
+    font-weight: bold;
+    color: #000;
+}
+
+.block-helpai-message-assistant em {
+    font-style: italic;
+}
+
+.block-helpai-message-assistant ul {
+    margin: 10px 0;
+    padding-left: 20px;
+}
+
+.block-helpai-message-assistant li {
+    margin: 5px 0;
+    list-style-type: disc;
+}
+
+.block-helpai-message-error {
+    background-color: #f8d7da;
+    color: #721c24;
+    border: 1px solid #f5c6cb;
+    margin-right: auto;
+}
+
+.block-helpai-message-loading {
+    background-color: #fff3cd;
+    color: #856404;
+    margin-right: auto;
+    font-style: italic;
+}
+
+.block-helpai-welcome {
+    padding: 10px;
+    color: #666;
+    font-style: italic;
+    text-align: center;
+}
+
+.block-helpai-input-container {
+    display: flex;
+    gap: 8px;
+    align-items: flex-end;
+}
+
+.block-helpai-input {
+    flex: 1;
+    padding: 8px;
+    border: 1px solid #ccc;
+    border-radius: 4px;
+    resize: vertical;
+    min-height: 40px;
+    font-family: inherit;
+}
+
+.block-helpai-input:focus {
+    outline: none;
+    border-color: #007bff;
+    box-shadow: 0 0 0 0.2rem rgba(0, 123, 255, 0.25);
+}
+
+.block-helpai-send {
+    padding: 8px 16px;
+    white-space: nowrap;
+}
+
+.block-helpai-pdf-links {
+    margin-top: 10px;
+    padding: 10px;
+    background-color: #e7f3ff;
+    border-left: 3px solid #007bff;
+    border-radius: 4px;
+}
+
+.block-helpai-pdf-links-title {
+    font-weight: bold;
+    margin-bottom: 8px;
+    color: #0056b3;
+}
+
+.block-helpai-pdf-link {
+    display: inline-block;
+    padding: 6px 12px;
+    margin: 4px 0;
+    background-color: white;
+    border: 1px solid #007bff;
+    border-radius: 4px;
+    color: #007bff;
+    text-decoration: none;
+    transition: all 0.2s;
+}
+
+.block-helpai-pdf-link:hover {
+    background-color: #007bff;
+    color: white;
+    text-decoration: none;
+}
+
+/* Scrollbar styling for webkit browsers */
+.block-helpai-messages::-webkit-scrollbar {
+    width: 8px;
+}
+
+.block-helpai-messages::-webkit-scrollbar-track {
+    background: #f1f1f1;
+    border-radius: 4px;
+}
+
+.block-helpai-messages::-webkit-scrollbar-thumb {
+    background: #888;
+    border-radius: 4px;
+}
+
+.block-helpai-messages::-webkit-scrollbar-thumb:hover {
+    background: #555;
+}
