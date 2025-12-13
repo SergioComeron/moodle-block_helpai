@@ -432,4 +432,129 @@ Si hay múltiples PDFs relevantes, menciona todos con sus respectivas ubicacione
             'pdfs' => $referencedpdfs,
         ];
     }
+
+    /**
+     * Generate a schema/outline for a PDF.
+     *
+     * @param int $cmid Course module ID.
+     * @param int $courseid Course ID.
+     * @return array Result with schema.
+     */
+    public static function generate_pdf_schema($cmid, $courseid) {
+        global $DB;
+
+        try {
+            // Check if OpenAI is configured.
+            $apikey = get_config('block_helpai', 'openai_apikey');
+            if (empty($apikey)) {
+                return [
+                    'success' => false,
+                    'message' => get_string('ainotenabled', 'block_helpai'),
+                ];
+            }
+
+            // Get the PDF details.
+            $pdfs = pdf_processor::get_course_pdfs($courseid);
+            $targetpdf = null;
+
+            foreach ($pdfs as $pdf) {
+                if ($pdf['cmid'] == $cmid) {
+                    $targetpdf = $pdf;
+                    break;
+                }
+            }
+
+            if (!$targetpdf) {
+                return [
+                    'success' => false,
+                    'message' => get_string('nopdfs', 'block_helpai'),
+                ];
+            }
+
+            // Get cached PDF content.
+            $cachedpdfs = pdf_indexer::get_cached_pdfs($courseid);
+            $pdfcontent = null;
+
+            foreach ($cachedpdfs as $cached) {
+                if ($cached->cmid == $cmid) {
+                    $pdfcontent = $cached->content;
+                    break;
+                }
+            }
+
+            if (empty($pdfcontent)) {
+                return [
+                    'success' => false,
+                    'message' => get_string('pdftextnotavailable', 'block_helpai'),
+                ];
+            }
+
+            // Build the prompt for schema generation.
+            $model = get_config('block_helpai', 'openai_model');
+            if (empty($model)) {
+                $model = 'gpt-4o';
+            }
+
+            $messages = [];
+            $messages[] = [
+                'role' => 'system',
+                'content' => "Eres un asistente especializado en crear esquemas/resúmenes estructurados de documentos PDF académicos.
+
+Tu tarea es analizar el contenido del PDF y crear un esquema detallado y estructurado que incluya:
+
+1. **Título del documento**
+2. **Introducción/Resumen general** (2-3 líneas)
+3. **Estructura principal**:
+   - Capítulos o secciones principales
+   - Subsecciones importantes
+   - Temas clave tratados en cada sección
+4. **Conceptos importantes** mencionados
+5. **Conclusiones** (si las hay)
+
+Formato del esquema:
+- Usa encabezados claros (con ##, ###)
+- Usa listas numeradas para capítulos y viñetas para subsecciones
+- Sé específico sobre QUÉ se trata en cada sección
+- Incluye detalles que ayuden al estudiante a navegar el documento
+- Usa un lenguaje claro y conciso en español
+
+El esquema debe ser lo suficientemente detallado para que un estudiante entienda la estructura completa del documento sin tenerlo que leer completo.",
+            ];
+
+            // Add the PDF content.
+            // Limit content to first 15000 characters to avoid token limits.
+            $contentpreview = substr($pdfcontent, 0, 15000);
+
+            $messages[] = [
+                'role' => 'user',
+                'content' => "Por favor, genera un esquema detallado del siguiente documento PDF:\n\n" .
+                             "Nombre: {$targetpdf['name']}\n" .
+                             "Archivo: {$targetpdf['filename']}\n\n" .
+                             "Contenido del PDF:\n{$contentpreview}" .
+                             (strlen($pdfcontent) > 15000 ? "\n\n[El documento continúa...]" : ""),
+            ];
+
+            // Call OpenAI API.
+            $result = self::call_openai_api($messages, $model);
+
+            if ($result['success']) {
+                return [
+                    'success' => true,
+                    'outline' => $result['response'],
+                    'pdfname' => $targetpdf['name'],
+                ];
+            } else {
+                return [
+                    'success' => false,
+                    'message' => $result['error'] ?? get_string('aierror', 'block_helpai'),
+                ];
+            }
+
+        } catch (\Exception $e) {
+            return [
+                'success' => false,
+                'message' => get_string('aierror', 'block_helpai') . ': ' . $e->getMessage(),
+            ];
+        }
+    }
 }

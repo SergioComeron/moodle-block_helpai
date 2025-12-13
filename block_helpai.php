@@ -59,25 +59,98 @@ class block_helpai extends block_base {
         // Get courseid from context.
         $courseid = $context->instanceid;
 
-        // Initialize JavaScript - pass as indexed array, then convert to object in JS.
+        // Initialize JavaScript modules.
         $PAGE->requires->js_call_amd('block_helpai/chat', 'init', [[
             'courseid' => (int)$courseid,
             'contextid' => (int)$this->context->id,
         ]]);
 
-        // Build the chat interface.
-        $this->content->text = $this->get_chat_interface();
+        $PAGE->requires->js_call_amd('block_helpai/schemas', 'init', [[
+            'courseid' => (int)$courseid,
+            'contextid' => (int)$this->context->id,
+        ]]);
+
+        // Build the tabbed interface.
+        $this->content->text = $this->get_tabbed_interface();
 
         return $this->content;
     }
 
     /**
-     * Get the chat interface HTML.
+     * Get the tabbed interface HTML.
      *
      * @return string HTML content.
      */
-    private function get_chat_interface() {
+    private function get_tabbed_interface() {
         $html = html_writer::start_div('block-helpai-container');
+
+        // Tab navigation.
+        $html .= html_writer::start_div('block-helpai-tabs');
+        $html .= html_writer::tag('button', get_string('chat', 'block_helpai'), [
+            'class' => 'block-helpai-tab active',
+            'data-tab' => 'chat',
+        ]);
+        $html .= html_writer::tag('button', get_string('schemas', 'block_helpai'), [
+            'class' => 'block-helpai-tab',
+            'data-tab' => 'schemas',
+        ]);
+        $html .= html_writer::end_div();
+
+        // Tab content containers.
+        $html .= html_writer::start_div('block-helpai-tab-content');
+
+        // Chat section.
+        $html .= html_writer::start_div('block-helpai-section active', ['data-section' => 'chat']);
+        $html .= $this->get_chat_section();
+        $html .= html_writer::end_div();
+
+        // Schemas section.
+        $html .= html_writer::start_div('block-helpai-section', ['data-section' => 'schemas']);
+        $html .= $this->get_schemas_section();
+        $html .= html_writer::end_div();
+
+        $html .= html_writer::end_div();
+
+        $html .= html_writer::end_div();
+
+        return $html;
+    }
+
+    /**
+     * Get the chat section HTML.
+     *
+     * @return string HTML content.
+     */
+    private function get_chat_section() {
+        $html = '';
+
+        // Header with clear history button.
+        $html .= html_writer::start_div('block-helpai-header');
+        $html .= html_writer::tag('button', get_string('clearhistory', 'block_helpai'), [
+            'id' => 'block-helpai-clear',
+            'class' => 'btn btn-sm btn-secondary block-helpai-clear',
+            'title' => get_string('clearhistory', 'block_helpai'),
+        ]);
+        $html .= html_writer::end_div();
+
+        // Quick actions area.
+        $html .= html_writer::start_div('block-helpai-quick-actions');
+        $html .= html_writer::div(get_string('quickactions', 'block_helpai'), 'block-helpai-quick-actions-title');
+
+        // Quick action buttons.
+        $quickactions = [
+            get_string('quickaction1', 'block_helpai'),
+            get_string('quickaction2', 'block_helpai'),
+            get_string('quickaction3', 'block_helpai'),
+        ];
+
+        foreach ($quickactions as $action) {
+            $html .= html_writer::tag('button', $action, [
+                'class' => 'btn btn-sm btn-outline-primary block-helpai-quick-action',
+                'data-question' => $action,
+            ]);
+        }
+        $html .= html_writer::end_div();
 
         // Messages area.
         $html .= html_writer::start_div('block-helpai-messages', ['id' => 'block-helpai-messages']);
@@ -100,6 +173,50 @@ class block_helpai extends block_base {
             'class' => 'btn btn-primary block-helpai-send',
         ]);
         $html .= html_writer::end_div();
+
+        return $html;
+    }
+
+    /**
+     * Get the schemas section HTML.
+     *
+     * @return string HTML content.
+     */
+    private function get_schemas_section() {
+        $html = '';
+
+        // Description.
+        $html .= html_writer::div(
+            get_string('schemas_description', 'block_helpai'),
+            'block-helpai-schemas-description'
+        );
+
+        // PDFs list container.
+        $html .= html_writer::start_div('block-helpai-schemas-list', ['id' => 'block-helpai-schemas-list']);
+        $html .= html_writer::div(get_string('loading_pdfs', 'block_helpai'), 'block-helpai-loading');
+        $html .= html_writer::end_div();
+
+        // Schema viewer (hidden by default).
+        $html .= html_writer::start_div('block-helpai-schema-viewer', [
+            'id' => 'block-helpai-schema-viewer',
+            'style' => 'display: none;',
+        ]);
+
+        // Schema header.
+        $html .= html_writer::start_div('block-helpai-schema-header');
+        $html .= html_writer::tag('h4', '', ['id' => 'block-helpai-schema-title']);
+        $html .= html_writer::tag('div', '', [
+            'id' => 'block-helpai-schema-date',
+            'class' => 'block-helpai-schema-date',
+        ]);
+        $html .= html_writer::tag('button', get_string('close_schema', 'block_helpai'), [
+            'id' => 'block-helpai-close-schema',
+            'class' => 'btn btn-sm btn-secondary',
+        ]);
+        $html .= html_writer::end_div();
+
+        // Schema content.
+        $html .= html_writer::div('', 'block-helpai-schema-content', ['id' => 'block-helpai-schema-content']);
 
         $html .= html_writer::end_div();
 

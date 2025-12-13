@@ -56,7 +56,7 @@ class process_question extends external_api {
      * @return array Response data.
      */
     public static function execute($courseid, $question) {
-        global $USER, $CFG;
+        global $USER, $CFG, $DB;
 
         // Debug logging.
         if ($CFG->debugdeveloper) {
@@ -74,8 +74,28 @@ class process_question extends external_api {
         self::validate_context($context);
         require_capability('block/helpai:askquestion', $context);
 
+        // Save user question to history.
+        $userhistory = new \stdClass();
+        $userhistory->userid = $USER->id;
+        $userhistory->courseid = $params['courseid'];
+        $userhistory->role = 'user';
+        $userhistory->message = $params['question'];
+        $userhistory->timecreated = time();
+        $DB->insert_record('block_helpai_history', $userhistory);
+
         // Process the question.
         $result = ai_handler::process_question($params['question'], $params['courseid'], $USER->id);
+
+        // Save assistant response to history.
+        if (isset($result['message']) && !empty($result['message'])) {
+            $assistanthistory = new \stdClass();
+            $assistanthistory->userid = $USER->id;
+            $assistanthistory->courseid = $params['courseid'];
+            $assistanthistory->role = 'assistant';
+            $assistanthistory->message = $result['message'];
+            $assistanthistory->timecreated = time();
+            $DB->insert_record('block_helpai_history', $assistanthistory);
+        }
 
         // Ensure required fields are present and properly typed.
         if (!isset($result['success'])) {

@@ -58,6 +58,29 @@ export const init = (config) => {
             }
         });
     }
+
+    // Add event listener for clear history button.
+    const clearButton = document.getElementById('block-helpai-clear');
+    if (clearButton) {
+        clearButton.addEventListener('click', () => {
+            clearHistory();
+        });
+    }
+
+    // Add event listeners for quick action buttons.
+    const quickActions = document.querySelectorAll('.block-helpai-quick-action');
+    quickActions.forEach((button) => {
+        button.addEventListener('click', () => {
+            const question = button.dataset.question;
+            if (question) {
+                input.value = question;
+                input.focus();
+            }
+        });
+    });
+
+    // Load chat history.
+    loadHistory();
 };
 
 /**
@@ -241,4 +264,54 @@ const removeLoadingMessage = () => {
     if (loadingDiv) {
         loadingDiv.remove();
     }
+};
+
+/**
+ * Load chat history from server.
+ */
+const loadHistory = () => {
+    Ajax.call([{
+        methodname: 'block_helpai_get_history',
+        args: {
+            courseid: courseid,
+        },
+    }])[0].then((response) => {
+        if (response.history && response.history.length > 0) {
+            response.history.forEach((item) => {
+                addMessage(item.message, item.role);
+            });
+        }
+        return true;
+    }).catch((error) => {
+        // eslint-disable-next-line no-console
+        console.error('Error loading history:', error);
+    });
+};
+
+/**
+ * Clear chat history.
+ */
+const clearHistory = () => {
+    if (!confirm(M.util.get_string('confirmclearhistory', 'block_helpai'))) {
+        return;
+    }
+
+    Ajax.call([{
+        methodname: 'block_helpai_clear_history',
+        args: {
+            courseid: courseid,
+        },
+    }])[0].then((response) => {
+        if (response.success) {
+            // Clear the messages container.
+            const messagesContainer = document.getElementById('block-helpai-messages');
+            messagesContainer.innerHTML = '';
+
+            // Show success message.
+            addMessage(M.util.get_string('historycleared', 'block_helpai'), 'assistant');
+        }
+        return true;
+    }).catch((error) => {
+        Notification.exception(error);
+    });
 };

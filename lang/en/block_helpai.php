@@ -63,5 +63,40 @@ $string['searchmode_desc'] = 'Choose how to search PDFs: Hybrid (local search fi
 $string['searchmode_hybrid'] = 'Hybrid (local + AI fallback) - Requires pdftotext';
 $string['searchmode_aionly'] = 'AI only (always use AI) - No pdftotext required';
 
+// History.
+$string['clearhistory'] = 'Clear history';
+$string['confirmclearhistory'] = 'Are you sure you want to clear your entire conversation history?';
+$string['historycleared'] = 'History cleared successfully.';
+
+// Quick actions.
+$string['quickactions'] = 'Suggested questions:';
+$string['quickaction1'] = 'What topics are covered in the PDFs of this course?';
+$string['quickaction2'] = 'Where can I find information about the main course topic?';
+$string['quickaction3'] = 'Which PDF should I read first?';
+
+// Schemas.
+$string['schemas'] = 'Schemas';
+$string['chat'] = 'Chat';
+$string['schemas_tab'] = 'PDF Schemas';
+$string['schemas_description'] = 'Generate structured outlines of course PDFs to get an overview of the content.';
+$string['generate_schema'] = 'Generate schema';
+$string['view_schema'] = 'View schema';
+$string['regenerate_schema'] = 'Regenerate schema';
+$string['generating_schema'] = 'Generating schema...';
+$string['schema_generated'] = 'Schema generated successfully';
+$string['no_schemas_yet'] = 'No schemas generated yet. Click "Generate schema" to create one.';
+$string['schema_generation_failed'] = 'Failed to generate schema. Please try again.';
+$string['loading_pdfs'] = 'Loading PDFs...';
+$string['no_pdfs_in_course'] = 'No PDFs available in this course.';
+$string['schema_for'] = 'Schema for: {$a}';
+$string['generated_on'] = 'Generated on: {$a}';
+$string['close_schema'] = 'Close schema';
+
 // Privacy.
-$string['privacy:metadata'] = 'The HelpAI block does not store any personal data.';
+$string['privacy:metadata'] = 'The HelpAI block stores user conversation history.';
+$string['privacy:metadata:block_helpai_history'] = 'HelpAI chat conversation history';
+$string['privacy:metadata:block_helpai_history:userid'] = 'User ID who asked the question';
+$string['privacy:metadata:block_helpai_history:courseid'] = 'Course ID where the question was asked';
+$string['privacy:metadata:block_helpai_history:role'] = 'Message role (user or assistant)';
+$string['privacy:metadata:block_helpai_history:message'] = 'Message content';
+$string['privacy:metadata:block_helpai_history:timecreated'] = 'Timestamp when the message was created';

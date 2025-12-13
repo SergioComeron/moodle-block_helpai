@@ -63,5 +63,40 @@ $string['searchmode_desc'] = 'Elige cómo buscar en los PDFs: Híbrido (búsqued
 $string['searchmode_hybrid'] = 'Híbrido (local + IA) - Requiere pdftotext';
 $string['searchmode_aionly'] = 'Solo IA (siempre usa IA) - No requiere pdftotext';
 
+// History.
+$string['clearhistory'] = 'Borrar historial';
+$string['confirmclearhistory'] = '¿Estás seguro de que quieres borrar todo tu historial de conversación?';
+$string['historycleared'] = 'Historial borrado correctamente.';
+
+// Quick actions.
+$string['quickactions'] = 'Preguntas sugeridas:';
+$string['quickaction1'] = '¿Qué temas se cubren en los PDFs de este curso?';
+$string['quickaction2'] = '¿Dónde puedo encontrar información sobre el tema principal del curso?';
+$string['quickaction3'] = '¿Qué PDF debería leer primero?';
+
+// Schemas.
+$string['schemas'] = 'Esquemas';
+$string['chat'] = 'Chat';
+$string['schemas_tab'] = 'Esquemas de PDFs';
+$string['schemas_description'] = 'Genera esquemas estructurados de los PDFs del curso para obtener una visión general del contenido.';
+$string['generate_schema'] = 'Generar esquema';
+$string['view_schema'] = 'Ver esquema';
+$string['regenerate_schema'] = 'Regenerar esquema';
+$string['generating_schema'] = 'Generando esquema...';
+$string['schema_generated'] = 'Esquema generado correctamente';
+$string['no_schemas_yet'] = 'Aún no hay esquemas generados. Haz clic en "Generar esquema" para crear uno.';
+$string['schema_generation_failed'] = 'Error al generar el esquema. Por favor, inténtalo de nuevo.';
+$string['loading_pdfs'] = 'Cargando PDFs...';
+$string['no_pdfs_in_course'] = 'No hay PDFs disponibles en este curso.';
+$string['schema_for'] = 'Esquema de: {$a}';
+$string['generated_on'] = 'Generado el: {$a}';
+$string['close_schema'] = 'Cerrar esquema';
+
 // Privacy.
-$string['privacy:metadata'] = 'El bloque HelpAI no almacena ningún dato personal.';
+$string['privacy:metadata'] = 'El bloque HelpAI almacena el historial de conversaciones de los usuarios.';
+$string['privacy:metadata:block_helpai_history'] = 'Historial de conversaciones del chat HelpAI';
+$string['privacy:metadata:block_helpai_history:userid'] = 'ID del usuario que hizo la pregunta';
+$string['privacy:metadata:block_helpai_history:courseid'] = 'ID del curso donde se hizo la pregunta';
+$string['privacy:metadata:block_helpai_history:role'] = 'Rol del mensaje (usuario o asistente)';
+$string['privacy:metadata:block_helpai_history:message'] = 'Contenido del mensaje';
+$string['privacy:metadata:block_helpai_history:timecreated'] = 'Fecha y hora en que se creó el mensaje';
