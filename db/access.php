@@ -18,7 +18,7 @@
  * Capability definitions for HelpAI block.
  *
  * @package    block_helpai
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -50,6 +50,19 @@ $capabilities = [
         'contextlevel' => CONTEXT_COURSE,
         'archetypes' => [
             'student' => CAP_ALLOW,
+            'teacher' => CAP_ALLOW,
+            'editingteacher' => CAP_ALLOW,
+            'manager' => CAP_ALLOW,
+        ],
+    ],
+
+    // Teachers and managers can read the course question log.
+    // Users with this capability are also exempt from the student daily cap.
+    'block/helpai:viewhistory' => [
+        'riskbitmask' => RISK_PERSONAL,
+        'captype' => 'read',
+        'contextlevel' => CONTEXT_COURSE,
+        'archetypes' => [
             'teacher' => CAP_ALLOW,
             'editingteacher' => CAP_ALLOW,
             'manager' => CAP_ALLOW,

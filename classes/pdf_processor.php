@@ -18,7 +18,7 @@
  * PDF processor for HelpAI block.
  *
  * @package    block_helpai
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -34,17 +34,26 @@ require_once($CFG->dirroot . '/mod/resource/lib.php');
 class pdf_processor {
 
     /**
-     * Get all PDF resources from a course.
+     * Get PDF resources from a course.
+     *
+     * Only resource files that belong to this course are considered. When
+     * $userid is provided, hidden or otherwise unavailable activities are
+     * dropped so a student never receives (or sends to the model) a PDF
+     * they cannot open.
+     *
+     * Pass null for $userid from the scheduled indexer so the cache can
+     * hold every course PDF; asking paths must pass the asking user.
      *
      * @param int $courseid Course ID.
+     * @param int|null $userid User to check visibility for, or null to skip.
      * @return array Array of PDF resources with their content.
      */
-    public static function get_course_pdfs($courseid) {
+    public static function get_course_pdfs($courseid, $userid = null) {
         global $DB;
 
         $pdfs = [];
 
-        // Get all resource modules in the course.
+        // Get resource PDFs that belong to this course only.
         $sql = "SELECT r.id, r.name, cm.id as cmid, f.id as fileid,
                        f.filename, f.contenthash, f.filesize
                 FROM {resource} r
@@ -67,7 +76,26 @@ class pdf_processor {
 
         $resources = $DB->get_records_sql($sql, $params);
 
+        $modinfo = null;
+        if ($userid) {
+            $modinfo = get_fast_modinfo($courseid, $userid);
+        }
+
         foreach ($resources as $resource) {
+            if ($modinfo) {
+                if (!isset($modinfo->cms[$resource->cmid])) {
+                    continue;
+                }
+                $cm = $modinfo->cms[$resource->cmid];
+                if (!$cm->uservisible) {
+                    continue;
+                }
+                $modcontext = \context_module::instance($cm->id);
+                if (!has_capability('mod/resource:view', $modcontext, $userid)) {
+                    continue;
+                }
+            }
+
             $pdfs[] = [
                 'id' => $resource->id,
                 'cmid' => $resource->cmid,
@@ -79,6 +107,21 @@ class pdf_processor {
         }
 
         return $pdfs;
+    }
+
+    /**
+     * Course-module IDs of PDFs the user is allowed to see in this course.
+     *
+     * @param int $courseid Course ID.
+     * @param int $userid User ID.
+     * @return array List of cmids keyed by cmid.
+     */
+    public static function get_visible_pdf_cmids($courseid, $userid) {
+        $cmids = [];
+        foreach (self::get_course_pdfs($courseid, $userid) as $pdf) {
+            $cmids[$pdf['cmid']] = $pdf['cmid'];
+        }
+        return $cmids;
     }
 
     /**

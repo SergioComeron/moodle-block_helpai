@@ -17,7 +17,7 @@
  * HelpAI chat interface JavaScript.
  *
  * @module     block_helpai/chat
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -33,15 +33,8 @@ let contextid = 0;
  * @param {Object} config Configuration object with courseid and contextid
  */
 export const init = (config) => {
-    // Debug: log the config received.
-    // eslint-disable-next-line no-console
-    console.log('HelpAI: init() called with config:', config);
-
     courseid = parseInt(config.courseid, 10);
     contextid = parseInt(config.contextid, 10);
-
-    // eslint-disable-next-line no-console
-    console.log('HelpAI: Parsed courseid=' + courseid + ', contextid=' + contextid);
 
     const sendButton = document.getElementById('block-helpai-send');
     const input = document.getElementById('block-helpai-input');
@@ -93,10 +86,6 @@ const sendMessage = () => {
     if (!question) {
         return;
     }
-
-    // Debug: log the courseid being sent.
-    // eslint-disable-next-line no-console
-    console.log('HelpAI: Sending question with courseid=' + courseid + ' (type: ' + typeof courseid + ')');
 
     // Add user message to chat.
     addMessage(question, 'user');

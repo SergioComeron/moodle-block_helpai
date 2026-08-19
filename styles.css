@@ -10,8 +10,21 @@
 /* Header with clear button */
 .block-helpai-header {
     display: flex;
-    justify-content: flex-end;
+    justify-content: space-between;
+    align-items: center;
+    gap: 8px;
     margin-bottom: 10px;
+}
+
+.block-helpai-header-actions {
+    display: flex;
+    gap: 8px;
+    margin-left: auto;
+}
+
+.block-helpai-report-link {
+    font-size: 12px;
+    padding: 4px 10px;
 }
 
 .block-helpai-clear {

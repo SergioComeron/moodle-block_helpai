@@ -18,7 +18,7 @@
  * External service for getting a saved schema.
  *
  * @package    block_helpai
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 

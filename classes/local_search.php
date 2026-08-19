@@ -18,7 +18,7 @@
  * Local search without AI for HelpAI block.
  *
  * @package    block_helpai
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -36,11 +36,10 @@ class local_search {
      *
      * @param string $question User's question.
      * @param int $courseid Course ID.
+     * @param int|null $userid Asking user, used to hide unavailable PDFs.
      * @return array Search results with PDFs and scores.
      */
-    public static function search($question, $courseid) {
-        global $DB;
-
+    public static function search($question, $courseid, $userid = null) {
         // Get question keywords.
         $keywords = self::extract_keywords($question);
 
@@ -52,8 +51,12 @@ class local_search {
             ];
         }
 
-        // Search in cached PDFs.
-        $results = self::search_in_cache($keywords, $courseid);
+        // Search in cached PDFs that this user is allowed to see.
+        $visiblecmids = null;
+        if ($userid) {
+            $visiblecmids = array_values(pdf_processor::get_visible_pdf_cmids($courseid, $userid));
+        }
+        $results = self::search_in_cache($keywords, $courseid, $visiblecmids);
 
         if (empty($results)) {
             return [
@@ -149,9 +152,10 @@ class local_search {
      *
      * @param array $keywords Keywords to search.
      * @param int $courseid Course ID.
+     * @param array|null $visiblecmids Visible course-module IDs, or null for all.
      * @return array Array of matching PDFs with scores.
      */
-    private static function search_in_cache($keywords, $courseid) {
+    private static function search_in_cache($keywords, $courseid, $visiblecmids = null) {
         global $DB;
 
         if (empty($keywords)) {
@@ -162,12 +166,23 @@ class local_search {
         list($insql, $params) = $DB->get_in_or_equal($keywords, SQL_PARAMS_NAMED);
         $params['courseid'] = $courseid;
 
+        $cmsql = '';
+        if ($visiblecmids !== null) {
+            if (empty($visiblecmids)) {
+                return [];
+            }
+            list($cminsql, $cmparams) = $DB->get_in_or_equal($visiblecmids, SQL_PARAMS_NAMED, 'cmid');
+            $cmsql = " AND c.cmid $cminsql";
+            $params = array_merge($params, $cmparams);
+        }
+
         $sql = "SELECT c.id, c.cmid, c.pdfname, c.filename, c.content,
                        SUM(i.frequency) as score
                 FROM {block_helpai_pdf_cache} c
                 INNER JOIN {block_helpai_pdf_index} i ON i.cacheid = c.id
                 WHERE c.courseid = :courseid
                 AND i.word $insql
+                $cmsql
                 GROUP BY c.id, c.cmid, c.pdfname, c.filename, c.content
                 ORDER BY score DESC";
 
@@ -175,7 +190,7 @@ class local_search {
 
         // If no results from index, try full-text search in content.
         if (empty($results)) {
-            $results = self::fulltext_search($keywords, $courseid);
+            $results = self::fulltext_search($keywords, $courseid, $visiblecmids);
         }
 
         return $results;
@@ -186,12 +201,11 @@ class local_search {
      *
      * @param array $keywords Keywords to search.
      * @param int $courseid Course ID.
+     * @param array|null $visiblecmids Visible course-module IDs, or null for all.
      * @return array Array of matching PDFs.
      */
-    private static function fulltext_search($keywords, $courseid) {
-        global $DB;
-
-        $pdfs = $DB->get_records('block_helpai_pdf_cache', ['courseid' => $courseid]);
+    private static function fulltext_search($keywords, $courseid, $visiblecmids = null) {
+        $pdfs = pdf_indexer::get_cached_pdfs($courseid, $visiblecmids);
         $results = [];
 
         foreach ($pdfs as $pdf) {
@@ -225,9 +239,13 @@ class local_search {
      * @param int $courseid Course ID.
      * @return bool True if local search should be attempted.
      */
-    public static function should_use_local_search($question, $courseid) {
-        // Check if there are cached PDFs.
-        $cachedcount = pdf_indexer::get_cached_pdfs($courseid);
+    public static function should_use_local_search($question, $courseid, $userid = null) {
+        $visiblecmids = null;
+        if ($userid) {
+            $visiblecmids = array_values(pdf_processor::get_visible_pdf_cmids($courseid, $userid));
+        }
+        // Check if there are cached PDFs the user can see.
+        $cachedcount = pdf_indexer::get_cached_pdfs($courseid, $visiblecmids);
 
         if (empty($cachedcount)) {
             return false;

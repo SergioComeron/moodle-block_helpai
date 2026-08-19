@@ -1,156 +1,147 @@
 # HelpAI Block for Moodle
 
-Un bloque inteligente para Moodle que ayuda a los estudiantes a encontrar información en los documentos PDF del curso utilizando IA generativa.
+A Moodle 4.5+ block (`block_helpai`) that lets students ask questions about the PDF resources in **this course**. The site administrator pastes an OpenAI API key; the institution pays OpenAI. There is no author-side billing, licence server, Stripe integration, or phone-home.
 
-## Características
+**Owner:** Sergio Comerón  
+**Release:** 1.5.0 (MATURITY_BETA)
 
-- **Chat Inteligente**: Interfaz de chat estilo IA generativa
-- **Dos Modos de Búsqueda**:
-  - **AI Only**: Solo IA (NO requiere pdftotext) ✅ RECOMENDADO
-  - **Hybrid**: Búsqueda local + IA (requiere pdftotext)
-- **Referencias Directas**: No da la respuesta directamente, sino que indica en qué PDF está la información
-- **Integración con AI Subsystem**: Utiliza el subsistema de IA de Moodle 4.5+
-- **Flexible**: Funciona con o sin herramientas de extracción de texto
-- **Caché Opcional**: Indexa y almacena el contenido de los PDFs para búsquedas rápidas (solo modo híbrido)
+---
 
-## Requisitos
+## Bring your own key (BYOK)
 
-### Requisitos Mínimos (Modo AI Only - RECOMENDADO)
-- Moodle 4.5 o superior
-- Subsistema de IA de Moodle habilitado
-- Proveedor de IA configurado que soporte análisis de documentos:
-  - ✅ OpenAI GPT-4 Turbo/GPT-4o (con visión)
-  - ✅ Anthropic Claude 3 (Opus, Sonnet, Haiku)
-  - ✅ Google Gemini Pro Vision
-  - ❌ Modelos solo texto (no funcionará en modo AI only)
+HelpAI uses a **site-level** OpenAI key stored in plugin settings (`block_helpai/openai_apikey`).
 
-### Requisitos Adicionales (Modo Híbrido - OPCIONAL)
-- Todo lo anterior +
-- Herramienta `pdftotext` instalada en el servidor
-- Espacio en base de datos para cache de PDFs
+- The Moodle site (the institution) owns the key and pays OpenAI.
+- The key is stored as a password-style admin setting (`admin_setting_configpasswordunmask`).
+- The plugin never logs the key.
+- This plugin does **not** sell licences, meter usage for the author, or send telemetry.
 
-## Instalación
+Configure it at: **Site administration → Plugins → Blocks → HelpAI**.
 
-1. Copiar el directorio `helpai` a `blocks/helpai/`
-2. Visitar la página de notificaciones de administración para completar la instalación
-3. Configurar un proveedor de IA en: `Administración del sitio > IA > Gestionar proveedores de IA`
-4. **Configurar modo de búsqueda** en: `Administración del sitio > Plugins > Bloques > HelpAI`
-   - **Recomendado**: Seleccionar "AI only" (no requiere pdftotext)
-   - Opcional: Seleccionar "Hybrid" si tienes pdftotext instalado
+---
 
-## Instalación de pdftotext (SOLO para modo híbrido)
+## Daily limit
 
-Para mejorar la extracción de texto de PDFs:
+Students are limited to a number of questions **per user, per course, per day**.
 
-### En Ubuntu/Debian:
+- Admin setting: **Daily questions per student** (`block_helpai/dailylimit`).
+- Default: **20**. Set to **0** for no limit.
+- Enforced on the server **before** OpenAI is called.
+- Hitting the cap returns a translated error (English and Spanish).
+- **Teachers, editing teachers and managers are not subject to this cap.** Anyone with `block/helpai:viewhistory` is exempt. That is the Moodle-idiomatic option: the same roles that can read the course question log are not blocked as students.
+
+The day boundary uses the current user’s midnight (`usergetmidnight`).
+
+---
+
+## Question log (teacher view)
+
+Every ask is stored in `block_helpai_questions`:
+
+- course, user, question, student-facing answer/summary, timestamp
+- whether AI was used
+- outcome: answered, not in materials, daily limit, error, or no PDFs
+
+Raw OpenAI request/response payloads are **not** stored.
+
+Teachers open the log from the block (**Question log**) if they have `block/helpai:viewhistory` (editing teacher, teacher, manager). The report lists questions, filterable by user.
+
+Students still have a personal chat history (`block_helpai_history`) they can clear. Clearing chat does **not** delete the teacher log. GDPR export/delete covers both tables.
+
+---
+
+## Stay inside the course
+
+- Only PDF **resource** files in the course where the student is asking are considered.
+- Hidden or otherwise unavailable activities are dropped (`uservisible` + `mod/resource:view`).
+- PDFs from other courses are never sent to the model.
+- If the course PDFs do not contain the answer, the assistant must say so and must not invent. When they do contain it, the reply points at the PDF.
+
+---
+
+## Features
+
+- Chat UI for questions about course PDFs
+- Two search modes:
+  - **AI only** (default): send the course PDF list to OpenAI. No `pdftotext` required.
+  - **Hybrid**: local keyword search first, then AI. Requires `pdftotext` for indexing.
+- PDF schemas/outlines (existing)
+- Daily student cap and teacher question log (1.5.0)
+
+## Requirements
+
+- Moodle 4.5 or later
+- A site OpenAI API key (GPT-4o or GPT-4 Turbo recommended)
+- Optional, hybrid mode only: `pdftotext` (poppler-utils)
+
+## Installation
+
+1. Copy this directory to `blocks/helpai/`
+2. Visit admin notifications to finish install / upgrade
+3. Paste the site OpenAI key and set the daily limit under **Plugins → Blocks → HelpAI**
+4. Turn editing on in a course and add the **HelpAI** block
+
+### pdftotext (hybrid mode only)
+
 ```bash
+# Ubuntu/Debian
 sudo apt-get install poppler-utils
-```
-
-### En CentOS/RHEL:
-```bash
+# CentOS/RHEL
 sudo yum install poppler-utils
-```
-
-### En macOS:
-```bash
+# macOS
 brew install poppler
 ```
 
-## Uso
+## Capabilities
 
-1. Activar la edición en un curso
-2. Añadir el bloque "HelpAI" a la página del curso
-3. Los estudiantes pueden hacer preguntas sobre el contenido de los PDFs
-4. El asistente de IA les indicará en qué PDF pueden encontrar la información
+| Capability | Default roles | Purpose |
+|---|---|---|
+| `block/helpai:addinstance` | editingteacher, manager | Add the block to a course |
+| `block/helpai:myaddinstance` | user | Add to Dashboard (block is course-only in practice) |
+| `block/helpai:askquestion` | student, teacher, editingteacher, manager | Ask questions |
+| `block/helpai:viewhistory` | teacher, editingteacher, manager | Open the course question log; **exempt from the student daily cap** |
 
-## Configuración del Subsistema de IA
+## Privacy
 
-1. Ir a: `Administración del sitio > IA > Gestionar proveedores de IA`
-2. Habilitar y configurar un proveedor (por ejemplo, OpenAI):
-   - Introducir la API key
-   - Configurar el modelo a utilizar
-   - Establecer los límites de uso
-3. Ir a: `Administración del sitio > IA > AI Placements`
-4. Asegurarse de que el placement está habilitado para el contexto de curso
+The privacy provider exports and deletes:
 
-## Permisos
+- `block_helpai_history` — personal chat transcript
+- `block_helpai_questions` — course question log
 
-El plugin define las siguientes capacidades:
+## Scheduled task
 
-- `block/helpai:addinstance` - Añadir el bloque a un curso
-- `block/helpai:myaddinstance` - Añadir el bloque al área personal
-- `block/helpai:askquestion` - Hacer preguntas al asistente de IA
+Daily at 02:00 the plugin indexes new course PDFs (hybrid cache). Manual run:
 
-Por defecto, los estudiantes tienen permiso para hacer preguntas.
-
-## Cómo funciona
-
-### Sistema de Búsqueda Inteligente
-
-El plugin utiliza un sistema híbrido de búsqueda para minimizar costes de IA:
-
-#### 1. Indexación Automática
-- Los PDFs se indexan automáticamente al hacer la primera pregunta
-- Una tarea programada (ejecutada a las 2:00 AM) mantiene el índice actualizado
-- El contenido de los PDFs se extrae una sola vez y se almacena en caché
-
-#### 2. Búsqueda Local (Sin coste de IA)
-Cuando un estudiante hace una pregunta:
-1. El sistema extrae palabras clave de la pregunta
-2. Busca esas palabras en el índice de PDFs
-3. Si encuentra coincidencias, devuelve los PDFs relevantes **sin usar IA**
-
-#### 3. IA Solo para Consultas Complejas
-Si la búsqueda local no encuentra resultados:
-1. Se envía la pregunta al proveedor de IA configurado
-2. La IA analiza el contenido cacheado de los PDFs
-3. Identifica qué PDF contiene la información
-4. Devuelve enlaces directos a los PDFs
-
-### Ventajas del Sistema de Caché
-
-✅ **Rápido**: Las búsquedas locales son instantáneas
-✅ **Económico**: ~80-90% de preguntas se responden sin usar IA
-✅ **Escalable**: No hay límites de peticiones a APIs externas
-✅ **Fiable**: Funciona aunque el proveedor de IA no esté disponible
-
-## Tarea Programada
-
-El plugin incluye una tarea programada que se ejecuta diariamente a las 2:00 AM para:
-- Indexar nuevos PDFs añadidos a los cursos
-- Mantener el índice actualizado
-
-Para ejecutar la tarea manualmente:
 ```bash
 php admin/cli/scheduled_task.php --execute='\\block_helpai\\task\\index_pdfs'
 ```
 
-## Limitaciones conocidas
+## Licence
 
-- La extracción de texto PDF requiere herramientas externas (`pdftotext`)
-- Los PDFs escaneados sin OCR pueden no tener texto extraíble
-- La búsqueda local funciona mejor con palabras clave específicas
-- Las respuestas de IA pueden variar según el proveedor configurado
+GPL v3 or later.
 
-## Mejoras futuras
+## Credits
 
-- [x] Cache de contenido PDF extraído
-- [x] Indexación de contenido para búsquedas más rápidas
-- [ ] Soporte para otros formatos de documento (DOCX, PPTX)
-- [ ] Historial de conversaciones
-- [ ] Análisis de uso y estadísticas
-- [ ] Integración con OCR para PDFs escaneados
-- [ ] Búsqueda semántica con embeddings
+Sergio Comerón, 2025–2026. Built for Moodle 4.5+.
 
-## Soporte
+---
 
-Para reportar problemas o sugerir mejoras, por favor contacte con el equipo de desarrollo.
+# HelpAI (español)
 
-## Licencia
+Bloque de Moodle 4.5+ para preguntar sobre los PDF **de este curso**. El administrador del sitio pega una clave de OpenAI; **la institución paga a OpenAI**. No hay facturación del autor, licencias, Stripe ni telemetría.
 
-GPL v3 o posterior
+## Trae tu propia clave (BYOK)
 
-## Créditos
+La clave es del sitio (`block_helpai/openai_apikey`), se guarda como contraseña y no se registra en logs.
 
-Desarrollado para Moodle 4.5+
+## Límite diario
+
+Por defecto **20 preguntas por estudiante, por curso y día**. Quien tenga `block/helpai:viewhistory` (profesor / gestor) no está sujeto a ese tope.
+
+## Registro para el profesor
+
+Cada pregunta se guarda (curso, usuario, pregunta, respuesta mostrada, si se usó IA, resultado). El profesor abre **Registro de preguntas** desde el bloque. No se guardan las peticiones crudas a la API.
+
+## Dentro del curso
+
+Solo se usan PDF que el estudiante puede ver en ese curso. Si los materiales no contienen la respuesta, el asistente lo dice y no inventa.

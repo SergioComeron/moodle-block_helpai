@@ -17,7 +17,7 @@
  * HelpAI schemas interface JavaScript.
  *
  * @module     block_helpai/schemas
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -33,14 +33,8 @@ let contextid = 0;
  * @param {Object} config Configuration object with courseid and contextid
  */
 export const init = (config) => {
-    // eslint-disable-next-line no-console
-    console.log('HelpAI Schemas: init() called with config:', config);
-
     courseid = parseInt(config.courseid, 10);
     contextid = parseInt(config.contextid, 10);
-
-    // eslint-disable-next-line no-console
-    console.log('HelpAI Schemas: Parsed courseid=' + courseid + ', contextid=' + contextid);
 
     // Set up tab switching.
     setupTabSwitching();
@@ -66,15 +60,9 @@ export const init = (config) => {
 const setupTabSwitching = () => {
     const tabs = document.querySelectorAll('.block-helpai-tab');
 
-    // eslint-disable-next-line no-console
-    console.log('HelpAI Schemas: Setting up tab switching, found tabs:', tabs.length);
-
     tabs.forEach((tab) => {
         tab.addEventListener('click', () => {
             const targetTab = tab.dataset.tab;
-
-            // eslint-disable-next-line no-console
-            console.log('HelpAI Schemas: Tab clicked:', targetTab);
 
             // Remove active class from all tabs.
             tabs.forEach((t) => t.classList.remove('active'));
