@@ -65,6 +65,14 @@ if ($ADMIN->fulltree) {
         ]
     ));
 
+    $settings->add(new admin_setting_configtext(
+        'block_helpai/maxpdfsperask',
+        get_string('maxpdfsperask', 'block_helpai'),
+        get_string('maxpdfsperask_desc', 'block_helpai'),
+        3,
+        PARAM_INT
+    ));
+
     // Daily question limit per student per course.
     $settings->add(new admin_setting_configtext(
         'block_helpai/dailylimit',

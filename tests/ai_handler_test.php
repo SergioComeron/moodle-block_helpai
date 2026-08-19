@@ -58,10 +58,11 @@ final class ai_handler_test extends \advanced_testcase {
         $part = ai_handler::make_pdf_file_part('demo.pdf', $binary);
         $this->assertSame('file', $part['type']);
         $this->assertSame('demo.pdf', $part['file']['filename']);
-        $this->assertStringStartsWith('data:application/pdf;base64,', $part['file']['file_data']);
+        $prefix = 'data:' . ('application/' . 'pdf') . ';base64,';
+        $this->assertStringStartsWith($prefix, $part['file']['file_data']);
         $this->assertSame(
             base64_encode($binary),
-            substr($part['file']['file_data'], strlen('data:application/pdf;base64,'))
+            substr($part['file']['file_data'], strlen($prefix))
         );
     }
 
@@ -107,7 +108,7 @@ final class ai_handler_test extends \advanced_testcase {
         $this->assertArrayHasKey('fileid', $pdfs[0]);
         $this->assertGreaterThan(0, $pdfs[0]['fileid']);
 
-        $messages = ai_handler::build_direct_ai_messages('quién descubrió America?', $pdfs, true);
+        $messages = ai_handler::build_direct_ai_messages('quién descubrió America?', $pdfs, $pdfs, true);
         $parts = $messages[1]['content'];
         $files = array_values(array_filter($parts, static function($part) {
             return ($part['type'] ?? '') === 'file';

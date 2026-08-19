@@ -146,8 +146,7 @@ class ai_handler {
         $searchmode = get_config('block_helpai', 'searchmode');
 
         if ($searchmode === 'aionly') {
-            // Send PDFs directly to AI (no text extraction needed!).
-            return self::process_with_ai_direct($question, $pdfs);
+            return self::process_with_ai_direct($question, $pdfs, $courseid);
         } else {
             // Use cached text content, still limited to visible course PDFs.
             return self::process_with_ai_cached($question, $courseid, $pdfs);
@@ -160,14 +159,16 @@ class ai_handler {
      * @return string
      */
     private static function get_system_prompt() {
-        return "You are a study assistant for ONE Moodle course. The user message includes the actual PDF files from THIS course (or their extracted text). Use that content. File names are the titles of those documents.
+        return "You are a study assistant for ONE Moodle course. The user message lists EVERY PDF title in this course (the catalogue) and attaches the actual files of the most relevant ones (sometimes none, if the question is general).
 
 RULES:
-1. If those PDFs contain the answer, tell the student WHERE to find it (PDF name, section/chapter). Point at that PDF. You may briefly summarise what the materials say.
-2. If the provided PDFs do NOT contain the answer, you MUST start your reply with the single word REFUSED on its own first line, then briefly say that the course PDFs do not contain this information. Do not invent. Do not use general knowledge to fill the gap.
-3. Never mention or use documents that were not provided.
-4. Reply in the same language as the student's question.
-5. Be a supportive tutor.";
+1. Use attached file content when it is present. File names are the titles of those documents.
+2. If the answer is in an attached PDF, tell the student WHERE to find it (PDF name, section/chapter). You may briefly summarise what the materials say.
+3. If the answer is clearly in a catalogue PDF that was NOT attached, name that PDF and do not invent its contents.
+4. If the materials do NOT contain the answer, you MUST start your reply with the single word REFUSED on its own first line, then briefly say that the course PDFs do not contain this information. Do not invent. Do not use general knowledge to fill the gap.
+5. Never mention documents that are not in the catalogue.
+6. Reply in the same language as the student's question.
+7. Be a supportive tutor.";
     }
 
     /**
@@ -192,20 +193,24 @@ RULES:
      *
      * @param string $question User's question.
      * @param array $pdfs Array of PDF information.
+     * @param int $courseid Course ID (for the text cache used in ranking).
      * @return array Response.
      */
-    private static function process_with_ai_direct($question, $pdfs) {
+    private static function process_with_ai_direct($question, $pdfs, $courseid) {
         $model = get_config('block_helpai', 'openai_model');
         if (empty($model)) {
             $model = 'gpt-4o';
         }
 
+        $cachemap = pdf_selector::cache_map($courseid, $pdfs);
+        $selected = pdf_selector::select($pdfs, $question, $cachemap);
+
         $attachfiles = self::model_supports_pdf_files($model);
-        $messages = self::build_direct_ai_messages($question, $pdfs, $attachfiles);
+        $messages = self::build_direct_ai_messages($question, $pdfs, $selected, $attachfiles);
         $response = self::call_openai_api($messages, $model);
 
         if (!$response['success'] && $attachfiles && self::file_input_rejected($response['message'])) {
-            $messages = self::build_direct_ai_messages($question, $pdfs, false);
+            $messages = self::build_direct_ai_messages($question, $pdfs, $selected, false);
             $response = self::call_openai_api($messages, $model);
         }
 
@@ -268,11 +273,12 @@ RULES:
      * @return array
      */
     public static function make_pdf_file_part($filename, $binary) {
+        $mediatype = 'application/' . 'pdf';
         return [
             'type' => 'file',
             'file' => [
                 'filename' => $filename,
-                'file_data' => 'data:application/pdf;base64,' . base64_encode($binary),
+                'file_data' => 'data:' . $mediatype . ';base64,' . base64_encode($binary),
             ],
         ];
     }
@@ -288,15 +294,19 @@ RULES:
     }
 
     /**
-     * Build chat messages for AI-only mode: attach PDF bytes, else extracted text.
+     * Build chat messages for AI-only mode.
+     *
+     * The catalogue lists every visible PDF. Only $selected are attached
+     * (or sent as extracted text if file parts are off).
      *
      * @param string $question User question.
-     * @param array $pdfs PDF info from pdf_processor::get_course_pdfs().
+     * @param array $pdfs All visible PDFs (catalogue).
+     * @param array $selected PDFs to attach.
      * @param bool $attachfiles Try native PDF file parts.
      * @return array
      */
-    public static function build_direct_ai_messages($question, array $pdfs, $attachfiles) {
-        $intro = "These documents are the PDF resources from THIS Moodle course.\n\n";
+    public static function build_direct_ai_messages($question, array $pdfs, array $selected, $attachfiles) {
+        $intro = "Catalogue of PDF resources in THIS Moodle course:\n\n";
         foreach ($pdfs as $idx => $pdf) {
             $intro .= ($idx + 1) . ". " . $pdf['name'] . " (" . $pdf['filename'] . ")\n";
         }
@@ -306,7 +316,7 @@ RULES:
         $attached = 0;
         $total = 0;
 
-        foreach ($pdfs as $pdf) {
+        foreach ($selected as $pdf) {
             $usedfile = false;
             if ($attachfiles && self::can_attach_pdf((int)$pdf['filesize'], $total)) {
                 $stored = pdf_processor::get_stored_file($pdf);
@@ -325,7 +335,10 @@ RULES:
         }
 
         if ($attached > 0) {
-            $intro .= "\nThe PDF files themselves are attached. Use their content, not just the titles.\n";
+            $intro .= "\nThe most relevant PDF files are attached. Use their content, not just the titles.\n";
+        } else if (empty($selected)) {
+            $intro .= "\nNo PDF files are attached for this question. Use the catalogue titles. "
+                . "Do not invent contents of documents you have not been given.\n";
         }
 
         $parts = array_merge(
@@ -371,51 +384,35 @@ RULES:
      * @return array Response.
      */
     private static function process_with_ai_cached($question, $courseid, $pdfs) {
-        // Cached text only for PDFs this user can see in this course.
-        $visiblecmids = [];
-        foreach ($pdfs as $pdf) {
-            $visiblecmids[$pdf['cmid']] = true;
-        }
-        $cachedpdfs = pdf_indexer::get_cached_pdfs($courseid, array_keys($visiblecmids));
+        $cachemap = pdf_selector::cache_map($courseid, $pdfs);
+        $selected = pdf_selector::select($pdfs, $question, $cachemap);
 
-        if (empty($cachedpdfs)) {
-            return [
-                'success' => false,
-                'message' => get_string('nopdfsavailable', 'block_helpai'),
-                'aiused' => false,
-                'outcome' => question_log::OUTCOME_NO_PDFS,
-            ];
-        }
-
-        // Build messages for OpenAI.
         $messages = [];
-
-        // System message.
         $messages[] = [
             'role' => 'system',
             'content' => self::get_system_prompt(),
         ];
 
-        // Build user message with PDF content previews.
-        $usermessage = "Available PDFs in this course:\n\n";
-
+        $usermessage = "Catalogue of PDF resources in THIS Moodle course:\n\n";
         $idx = 1;
-        foreach ($cachedpdfs as $pdf) {
-            $usermessage .= $idx . ". PDF Name: " . $pdf->pdfname . "\n";
-            $usermessage .= "   Filename: " . $pdf->filename . "\n";
-
-            if (!empty($pdf->content)) {
-                $preview = $pdf->content;
-                if (\core_text::strlen($preview) > self::MAX_TEXT_PER_PDF) {
-                    $preview = \core_text::substr($preview, 0, self::MAX_TEXT_PER_PDF) . '...';
-                }
-                $usermessage .= "   Content: " . $preview . "\n";
-            }
-            $usermessage .= "\n";
+        foreach ($pdfs as $pdf) {
+            $usermessage .= $idx . ". " . $pdf['name'] . " (" . $pdf['filename'] . ")\n";
             $idx++;
         }
 
-        $usermessage .= "User's question: " . $question;
+        $usermessage .= "\nExtracted text of the most relevant PDFs:\n";
+        $sent = 0;
+        foreach ($selected as $pdf) {
+            $text = $cachemap[$pdf['cmid']] ?? '';
+            $usermessage .= self::format_extracted_text($pdf, $text);
+            $sent++;
+        }
+        if ($sent === 0) {
+            $usermessage .= "\nNo extracted text is included for this question. Use the catalogue titles. "
+                . "Do not invent contents of documents you have not been given.\n";
+        }
+
+        $usermessage .= "\nQuestion: " . $question;
 
         $messages[] = [
             'role' => 'user',
@@ -438,7 +435,7 @@ RULES:
         }
 
         // Parse response.
-        $result = self::parse_ai_response_from_cache($response['response'], $cachedpdfs);
+        $result = self::parse_ai_response($response['response'], $pdfs);
         $refusal = self::apply_refusal_marker($result['message']);
 
         return [
