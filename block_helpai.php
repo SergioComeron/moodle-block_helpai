@@ -18,7 +18,7 @@
  * HelpAI block main class.
  *
  * @package    block_helpai
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -101,7 +101,7 @@ class block_helpai extends block_base {
 
         // Chat section.
         $html .= html_writer::start_div('block-helpai-section active', ['data-section' => 'chat']);
-        $html .= $this->get_chat_section();
+        $html .= $this->get_chat_section($this->page->context->instanceid);
         $html .= html_writer::end_div();
 
         // Schemas section.
@@ -119,18 +119,29 @@ class block_helpai extends block_base {
     /**
      * Get the chat section HTML.
      *
+     * @param int $courseid Course ID.
      * @return string HTML content.
      */
-    private function get_chat_section() {
+    private function get_chat_section($courseid) {
         $html = '';
 
-        // Header with clear history button.
+        $coursecontext = \context_course::instance($courseid);
+
+        // Header: teacher report link (if allowed) and clear-history button.
         $html .= html_writer::start_div('block-helpai-header');
+        if (has_capability('block/helpai:viewhistory', $coursecontext)) {
+            $reporturl = new \moodle_url('/blocks/helpai/report.php', ['id' => $courseid]);
+            $html .= html_writer::link($reporturl, get_string('viewquestionlog', 'block_helpai'), [
+                'class' => 'btn btn-sm btn-secondary block-helpai-report-link',
+            ]);
+        }
+        $html .= html_writer::start_div('block-helpai-header-actions');
         $html .= html_writer::tag('button', get_string('clearhistory', 'block_helpai'), [
             'id' => 'block-helpai-clear',
             'class' => 'btn btn-sm btn-secondary block-helpai-clear',
             'title' => get_string('clearhistory', 'block_helpai'),
         ]);
+        $html .= html_writer::end_div();
         $html .= html_writer::end_div();
 
         // Quick actions area.

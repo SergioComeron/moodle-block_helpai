@@ -18,7 +18,7 @@
  * External service for getting course PDFs.
  *
  * @package    block_helpai
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -54,7 +54,7 @@ class get_course_pdfs extends external_api {
      * @return array PDFs data.
      */
     public static function execute($courseid) {
-        global $DB;
+        global $DB, $USER;
 
         // Validate parameters.
         $params = self::validate_parameters(self::execute_parameters(), [
@@ -66,8 +66,8 @@ class get_course_pdfs extends external_api {
         self::validate_context($context);
         require_capability('block/helpai:askquestion', $context);
 
-        // Get PDFs from course.
-        $pdfs = pdf_processor::get_course_pdfs($params['courseid']);
+        // Get PDFs from course that this user is allowed to see.
+        $pdfs = pdf_processor::get_course_pdfs($params['courseid'], $USER->id);
 
         // Get existing schemas.
         $schemas = $DB->get_records('block_helpai_schemas', [

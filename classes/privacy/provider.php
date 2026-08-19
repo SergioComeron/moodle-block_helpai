@@ -18,7 +18,7 @@
  * Privacy provider for block_helpai.
  *
  * @package    block_helpai
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -58,6 +58,20 @@ class provider implements
             'privacy:metadata:block_helpai_history'
         );
 
+        $collection->add_database_table(
+            'block_helpai_questions',
+            [
+                'userid' => 'privacy:metadata:block_helpai_questions:userid',
+                'courseid' => 'privacy:metadata:block_helpai_questions:courseid',
+                'question' => 'privacy:metadata:block_helpai_questions:question',
+                'answer' => 'privacy:metadata:block_helpai_questions:answer',
+                'aiused' => 'privacy:metadata:block_helpai_questions:aiused',
+                'outcome' => 'privacy:metadata:block_helpai_questions:outcome',
+                'timecreated' => 'privacy:metadata:block_helpai_questions:timecreated',
+            ],
+            'privacy:metadata:block_helpai_questions'
+        );
+
         return $collection;
     }
 
@@ -76,12 +90,21 @@ class provider implements
                   JOIN {block_helpai_history} h ON h.courseid = c.id
                  WHERE h.userid = :userid";
 
-        $params = [
+        $contextlist->add_from_sql($sql, [
             'contextlevel' => CONTEXT_COURSE,
             'userid' => $userid,
-        ];
+        ]);
 
-        $contextlist->add_from_sql($sql, $params);
+        $sql = "SELECT ctx.id
+                  FROM {context} ctx
+                  JOIN {course} c ON c.id = ctx.instanceid AND ctx.contextlevel = :contextlevel
+                  JOIN {block_helpai_questions} q ON q.courseid = c.id
+                 WHERE q.userid = :userid";
+
+        $contextlist->add_from_sql($sql, [
+            'contextlevel' => CONTEXT_COURSE,
+            'userid' => $userid,
+        ]);
 
         return $contextlist;
     }
@@ -106,6 +129,7 @@ class provider implements
             }
 
             $courseid = $context->instanceid;
+            $exportdata = new \stdClass();
 
             $history = $DB->get_records('block_helpai_history', [
                 'userid' => $user->id,
@@ -121,10 +145,32 @@ class provider implements
                         'timecreated' => \core_privacy\local\request\transform::datetime($record->timecreated),
                     ];
                 }
+                $exportdata->history = $data;
+            }
 
+            $questions = $DB->get_records('block_helpai_questions', [
+                'userid' => $user->id,
+                'courseid' => $courseid,
+            ], 'timecreated ASC');
+
+            if (!empty($questions)) {
+                $qdata = [];
+                foreach ($questions as $record) {
+                    $qdata[] = (object)[
+                        'question' => $record->question,
+                        'answer' => $record->answer,
+                        'aiused' => \core_privacy\local\request\transform::yesno($record->aiused),
+                        'outcome' => $record->outcome,
+                        'timecreated' => \core_privacy\local\request\transform::datetime($record->timecreated),
+                    ];
+                }
+                $exportdata->questions = $qdata;
+            }
+
+            if (!empty($exportdata->history) || !empty($exportdata->questions)) {
                 writer::with_context($context)->export_data(
                     [get_string('pluginname', 'block_helpai')],
-                    (object)['history' => $data]
+                    $exportdata
                 );
             }
         }
@@ -143,6 +189,7 @@ class provider implements
         }
 
         $DB->delete_records('block_helpai_history', ['courseid' => $context->instanceid]);
+        $DB->delete_records('block_helpai_questions', ['courseid' => $context->instanceid]);
     }
 
     /**
@@ -164,10 +211,12 @@ class provider implements
                 continue;
             }
 
-            $DB->delete_records('block_helpai_history', [
+            $params = [
                 'userid' => $userid,
                 'courseid' => $context->instanceid,
-            ]);
+            ];
+            $DB->delete_records('block_helpai_history', $params);
+            $DB->delete_records('block_helpai_questions', $params);
         }
     }
 
@@ -183,13 +232,16 @@ class provider implements
             return;
         }
 
-        $sql = "SELECT userid
-                  FROM {block_helpai_history}
-                 WHERE courseid = :courseid";
-
         $params = ['courseid' => $context->instanceid];
 
-        $userlist->add_from_sql('userid', $sql, $params);
+        $userlist->add_from_sql('userid',
+            "SELECT userid FROM {block_helpai_history} WHERE courseid = :courseid",
+            $params
+        );
+        $userlist->add_from_sql('userid',
+            "SELECT userid FROM {block_helpai_questions} WHERE courseid = :courseid",
+            $params
+        );
     }
 
     /**
@@ -218,5 +270,6 @@ class provider implements
         $params = array_merge(['courseid' => $context->instanceid], $userparams);
 
         $DB->delete_records_select('block_helpai_history', $select, $params);
+        $DB->delete_records_select('block_helpai_questions', $select, $params);
     }
 }

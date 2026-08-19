@@ -18,20 +18,19 @@
  * Settings for HelpAI block.
  *
  * @package    block_helpai
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
 defined('MOODLE_INTERNAL') || die();
 
 if ($ADMIN->fulltree) {
-    // OpenAI API Key.
-    $settings->add(new admin_setting_configtext(
+    // Site-owned OpenAI API key (BYOK). Stored as a password field; never logged.
+    $settings->add(new admin_setting_configpasswordunmask(
         'block_helpai/openai_apikey',
         get_string('openai_apikey', 'block_helpai'),
         get_string('openai_apikey_desc', 'block_helpai'),
-        '',
-        PARAM_TEXT
+        ''
     ));
 
     // OpenAI Model.
@@ -58,5 +57,14 @@ if ($ADMIN->fulltree) {
             'hybrid' => get_string('searchmode_hybrid', 'block_helpai'),
             'aionly' => get_string('searchmode_aionly', 'block_helpai'),
         ]
+    ));
+
+    // Daily question limit per student per course.
+    $settings->add(new admin_setting_configtext(
+        'block_helpai/dailylimit',
+        get_string('dailylimit', 'block_helpai'),
+        get_string('dailylimit_desc', 'block_helpai'),
+        20,
+        PARAM_INT
     ));
 }

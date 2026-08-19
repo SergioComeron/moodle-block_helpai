@@ -18,7 +18,7 @@
  * PDF indexer for HelpAI block.
  *
  * @package    block_helpai
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -210,12 +210,25 @@ class pdf_indexer {
      * Get cached PDF content for a course.
      *
      * @param int $courseid Course ID.
+     * @param array|null $cmids Optional list of course-module IDs to keep.
      * @return array Array of cached PDFs.
      */
-    public static function get_cached_pdfs($courseid) {
+    public static function get_cached_pdfs($courseid, $cmids = null) {
         global $DB;
 
-        return $DB->get_records('block_helpai_pdf_cache', ['courseid' => $courseid]);
+        $records = $DB->get_records('block_helpai_pdf_cache', ['courseid' => $courseid]);
+        if ($cmids === null) {
+            return $records;
+        }
+
+        $allowed = array_flip($cmids);
+        $filtered = [];
+        foreach ($records as $id => $record) {
+            if (isset($allowed[$record->cmid])) {
+                $filtered[$id] = $record;
+            }
+        }
+        return $filtered;
     }
 
     /**

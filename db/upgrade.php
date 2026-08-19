@@ -18,7 +18,7 @@
  * Upgrade script for block_helpai.
  *
  * @package    block_helpai
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -93,6 +93,39 @@ function xmldb_block_helpai_upgrade($oldversion) {
 
         // Helpai savepoint reached.
         upgrade_block_savepoint(true, 2025121004, 'helpai');
+    }
+
+    if ($oldversion < 2026081900) {
+
+        // Define table block_helpai_questions to be created.
+        $table = new xmldb_table('block_helpai_questions');
+
+        // Adding fields to table block_helpai_questions.
+        $table->add_field('id', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, XMLDB_SEQUENCE, null);
+        $table->add_field('userid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('courseid', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('question', XMLDB_TYPE_TEXT, null, null, XMLDB_NOTNULL, null, null);
+        $table->add_field('answer', XMLDB_TYPE_TEXT, null, null, null, null, null);
+        $table->add_field('aiused', XMLDB_TYPE_INTEGER, '1', null, XMLDB_NOTNULL, null, '0');
+        $table->add_field('outcome', XMLDB_TYPE_CHAR, '20', null, XMLDB_NOTNULL, null, null);
+        $table->add_field('timecreated', XMLDB_TYPE_INTEGER, '10', null, XMLDB_NOTNULL, null, null);
+
+        // Adding keys to table block_helpai_questions.
+        $table->add_key('primary', XMLDB_KEY_PRIMARY, ['id']);
+        $table->add_key('userid', XMLDB_KEY_FOREIGN, ['userid'], 'user', ['id']);
+        $table->add_key('courseid', XMLDB_KEY_FOREIGN, ['courseid'], 'course', ['id']);
+
+        // Adding indexes to table block_helpai_questions.
+        $table->add_index('userid_courseid_time', XMLDB_INDEX_NOTUNIQUE, ['userid', 'courseid', 'timecreated']);
+        $table->add_index('courseid_time', XMLDB_INDEX_NOTUNIQUE, ['courseid', 'timecreated']);
+
+        // Conditionally launch create table for block_helpai_questions.
+        if (!$dbman->table_exists($table)) {
+            $dbman->create_table($table);
+        }
+
+        // Helpai savepoint reached.
+        upgrade_block_savepoint(true, 2026081900, 'helpai');
     }
 
     return true;

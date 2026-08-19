@@ -18,7 +18,7 @@
  * AI handler for HelpAI block using OpenAI API directly.
  *
  * @package    block_helpai
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -30,6 +30,15 @@ defined('MOODLE_INTERNAL') || die();
  * Class to handle AI interactions using OpenAI API.
  */
 class ai_handler {
+
+    /** Max bytes of a single PDF attached to OpenAI. */
+    const MAX_PDF_BYTES = 15728640; // 15 MB.
+
+    /** Max combined bytes of PDFs attached to one request. */
+    const MAX_PDF_TOTAL_BYTES = 41943040; // 40 MB.
+
+    /** Characters of extracted text sent per PDF when files are not attached. */
+    const MAX_TEXT_PER_PDF = 20000;
 
     /**
      * Process a question and return which PDF contains the answer.
@@ -48,6 +57,8 @@ class ai_handler {
                 return [
                     'success' => false,
                     'message' => get_string('ainotenabled', 'block_helpai'),
+                    'aiused' => false,
+                    'outcome' => question_log::OUTCOME_ERROR,
                 ];
             }
 
@@ -63,11 +74,13 @@ class ai_handler {
                 self::ensure_pdfs_indexed($courseid);
 
                 // Try local search first (no AI cost!).
-                if (local_search::should_use_local_search($question, $courseid)) {
-                    $localresult = local_search::search($question, $courseid);
+                if (local_search::should_use_local_search($question, $courseid, $userid)) {
+                    $localresult = local_search::search($question, $courseid, $userid);
 
                     // If local search found results, return them.
                     if ($localresult['success'] && !empty($localresult['pdfs'])) {
+                        $localresult['aiused'] = false;
+                        $localresult['outcome'] = question_log::OUTCOME_ANSWERED;
                         return $localresult;
                     }
                 }
@@ -80,6 +93,8 @@ class ai_handler {
             return [
                 'success' => false,
                 'message' => get_string('aierror', 'block_helpai') . ': ' . $e->getMessage(),
+                'aiused' => false,
+                'outcome' => question_log::OUTCOME_ERROR,
             ];
         }
     }
@@ -115,13 +130,15 @@ class ai_handler {
      * @return array Response with PDF reference.
      */
     private static function process_with_ai($question, $courseid, $userid) {
-        // Get PDFs from course.
-        $pdfs = pdf_processor::get_course_pdfs($courseid);
+        // Only PDFs this user is allowed to see in this course.
+        $pdfs = pdf_processor::get_course_pdfs($courseid, $userid);
 
         if (empty($pdfs)) {
             return [
                 'success' => false,
                 'message' => get_string('nopdfsavailable', 'block_helpai'),
+                'aiused' => false,
+                'outcome' => question_log::OUTCOME_NO_PDFS,
             ];
         }
 
@@ -132,9 +149,42 @@ class ai_handler {
             // Send PDFs directly to AI (no text extraction needed!).
             return self::process_with_ai_direct($question, $pdfs);
         } else {
-            // Use cached text content.
+            // Use cached text content, still limited to visible course PDFs.
             return self::process_with_ai_cached($question, $courseid, $pdfs);
         }
+    }
+
+    /**
+     * Shared system prompt: stay inside this course and refuse if not in the PDFs.
+     *
+     * @return string
+     */
+    private static function get_system_prompt() {
+        return "You are a study assistant for ONE Moodle course. The user message includes the actual PDF files from THIS course (or their extracted text). Use that content. File names are the titles of those documents.
+
+RULES:
+1. If those PDFs contain the answer, tell the student WHERE to find it (PDF name, section/chapter). Point at that PDF. You may briefly summarise what the materials say.
+2. If the provided PDFs do NOT contain the answer, you MUST start your reply with the single word REFUSED on its own first line, then briefly say that the course PDFs do not contain this information. Do not invent. Do not use general knowledge to fill the gap.
+3. Never mention or use documents that were not provided.
+4. Reply in the same language as the student's question.
+5. Be a supportive tutor.";
+    }
+
+    /**
+     * Strip a leading REFUSED marker and report whether the model refused.
+     *
+     * @param string $response Raw model text.
+     * @return array{refused:bool,message:string}
+     */
+    private static function apply_refusal_marker($response) {
+        if (preg_match('/^\s*REFUSED\b\s*/i', $response)) {
+            $message = trim(preg_replace('/^\s*REFUSED\b\s*/i', '', $response));
+            if ($message === '') {
+                $message = get_string('noanswerinmaterials', 'block_helpai');
+            }
+            return ['refused' => true, 'message' => $message];
+        }
+        return ['refused' => false, 'message' => $response];
     }
 
     /**
@@ -145,69 +195,171 @@ class ai_handler {
      * @return array Response.
      */
     private static function process_with_ai_direct($question, $pdfs) {
-        global $DB;
-
-        // Build messages for OpenAI.
-        $messages = [];
-
-        // System message with instructions.
-        $messages[] = [
-            'role' => 'system',
-            'content' => "Eres un asistente de estudio para un curso de Moodle. Tu objetivo es GUIAR a los estudiantes para que encuentren la información por sí mismos, actuando como un tutor que les indica exactamente dónde buscar.
-
-REGLAS IMPORTANTES:
-1. NO respondas la pregunta directamente - tu trabajo es indicar DÓNDE encontrar la respuesta
-2. Identifica qué PDF(s) contienen la información relevante
-3. Proporciona detalles específicos sobre la ubicación: capítulos, secciones, temas, partes del documento
-4. Si es posible, menciona el contexto (inicio, mitad, final del documento)
-5. Sé específico y detallado sobre QUÉ temas/conceptos están en esa parte del PDF
-6. Usa un tono amigable, motivador y de apoyo como un profesor que guía al estudiante
-
-Formato de respuesta ideal:
-'La información que buscas sobre [tema] se encuentra en el documento \"[PDF Name]\".
-
-Específicamente, busca en:
-- [Capítulo/Sección]: Aquí encontrarás información sobre [detalles específicos]
-- [Otra sección si aplica]: Esta parte trata sobre [más detalles]
-
-Te recomiendo que leas [contexto adicional] para tener una comprensión completa del tema. ¡Ánimo con tu estudio!'
-
-Si hay múltiples PDFs relevantes, menciona todos con sus respectivas ubicaciones específicas.",
-        ];
-
-        // Build user message with PDFs information.
-        $usermessage = "I have " . count($pdfs) . " PDF documents:\n\n";
-        foreach ($pdfs as $idx => $pdf) {
-            $usermessage .= ($idx + 1) . ". " . $pdf['name'] . " (" . $pdf['filename'] . ")\n";
-        }
-        $usermessage .= "\nQuestion: " . $question;
-
-        $messages[] = [
-            'role' => 'user',
-            'content' => $usermessage,
-        ];
-
-        // Get model setting.
         $model = get_config('block_helpai', 'openai_model');
         if (empty($model)) {
             $model = 'gpt-4o';
         }
 
-        // Call OpenAI API.
+        $attachfiles = self::model_supports_pdf_files($model);
+        $messages = self::build_direct_ai_messages($question, $pdfs, $attachfiles);
         $response = self::call_openai_api($messages, $model);
 
+        if (!$response['success'] && $attachfiles && self::file_input_rejected($response['message'])) {
+            $messages = self::build_direct_ai_messages($question, $pdfs, false);
+            $response = self::call_openai_api($messages, $model);
+        }
+
         if (!$response['success']) {
+            $response['aiused'] = true;
+            $response['outcome'] = question_log::OUTCOME_ERROR;
             return $response;
         }
 
-        // Parse response.
         $result = self::parse_ai_response($response['response'], $pdfs);
+        $refusal = self::apply_refusal_marker($result['message']);
 
         return [
             'success' => true,
-            'message' => $result['message'],
-            'pdfs' => $result['pdfs'],
+            'message' => $refusal['message'],
+            'pdfs' => $refusal['refused'] ? [] : $result['pdfs'],
+            'aiused' => true,
+            'outcome' => $refusal['refused'] ? question_log::OUTCOME_REFUSED : question_log::OUTCOME_ANSWERED,
         ];
+    }
+
+    /**
+     * Whether this model accepts native PDF file parts.
+     *
+     * @param string $model OpenAI model id.
+     * @return bool
+     */
+    public static function model_supports_pdf_files($model) {
+        $model = strtolower((string)$model);
+        foreach (['gpt-4o', 'gpt-4.1', 'gpt-4-turbo', 'gpt-5', 'o1', 'o3', 'o4'] as $prefix) {
+            if (str_starts_with($model, $prefix)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    /**
+     * Whether a PDF of this size can still be attached.
+     *
+     * @param int $filesize File size in bytes.
+     * @param int $already Bytes already attached.
+     * @return bool
+     */
+    public static function can_attach_pdf($filesize, $already) {
+        if ($filesize <= 0) {
+            return false;
+        }
+        if ($filesize > self::MAX_PDF_BYTES) {
+            return false;
+        }
+        return ($already + $filesize) <= self::MAX_PDF_TOTAL_BYTES;
+    }
+
+    /**
+     * Chat Completions file part for a PDF.
+     *
+     * @param string $filename Original filename.
+     * @param string $binary Raw PDF bytes.
+     * @return array
+     */
+    public static function make_pdf_file_part($filename, $binary) {
+        return [
+            'type' => 'file',
+            'file' => [
+                'filename' => $filename,
+                'file_data' => 'data:application/pdf;base64,' . base64_encode($binary),
+            ],
+        ];
+    }
+
+    /**
+     * True when OpenAI rejected the request because of PDF file parts.
+     *
+     * @param string $message Error message from call_openai_api().
+     * @return bool
+     */
+    public static function file_input_rejected($message) {
+        return (bool) preg_match('/file_data|input_file|unsupported file|invalid.*pdf|pdf.*not supported/i', $message);
+    }
+
+    /**
+     * Build chat messages for AI-only mode: attach PDF bytes, else extracted text.
+     *
+     * @param string $question User question.
+     * @param array $pdfs PDF info from pdf_processor::get_course_pdfs().
+     * @param bool $attachfiles Try native PDF file parts.
+     * @return array
+     */
+    public static function build_direct_ai_messages($question, array $pdfs, $attachfiles) {
+        $intro = "These documents are the PDF resources from THIS Moodle course.\n\n";
+        foreach ($pdfs as $idx => $pdf) {
+            $intro .= ($idx + 1) . ". " . $pdf['name'] . " (" . $pdf['filename'] . ")\n";
+        }
+
+        $parts = [];
+        $textblocks = '';
+        $attached = 0;
+        $total = 0;
+
+        foreach ($pdfs as $pdf) {
+            $usedfile = false;
+            if ($attachfiles && self::can_attach_pdf((int)$pdf['filesize'], $total)) {
+                $stored = pdf_processor::get_stored_file($pdf);
+                $binary = $stored ? $stored->get_content() : '';
+                if ($binary !== '' && $binary !== false) {
+                    $parts[] = self::make_pdf_file_part($pdf['filename'], $binary);
+                    $total += strlen($binary);
+                    $attached++;
+                    $usedfile = true;
+                }
+            }
+            if (!$usedfile) {
+                $text = pdf_processor::extract_pdf_text($pdf['contenthash']);
+                $textblocks .= self::format_extracted_text($pdf, $text);
+            }
+        }
+
+        if ($attached > 0) {
+            $intro .= "\nThe PDF files themselves are attached. Use their content, not just the titles.\n";
+        }
+
+        $parts = array_merge(
+            [['type' => 'text', 'text' => $intro]],
+            $parts
+        );
+        $parts[] = [
+            'type' => 'text',
+            'text' => $textblocks . "\nQuestion: " . $question,
+        ];
+
+        return [
+            ['role' => 'system', 'content' => self::get_system_prompt()],
+            ['role' => 'user', 'content' => $parts],
+        ];
+    }
+
+    /**
+     * Extracted-text block for one PDF when the file was not attached.
+     *
+     * @param array $pdf PDF info.
+     * @param string $text Extracted text.
+     * @return string
+     */
+    public static function format_extracted_text(array $pdf, $text) {
+        $text = trim((string)$text);
+        if ($text === '' || $text === get_string('pdftextnotavailable', 'block_helpai')
+                || $text === get_string('pdftoolnotavailable', 'block_helpai')) {
+            return "\n--- " . $pdf['name'] . " ---\n(No extracted text; use the attached file if present.)\n";
+        }
+        if (\core_text::strlen($text) > self::MAX_TEXT_PER_PDF) {
+            $text = \core_text::substr($text, 0, self::MAX_TEXT_PER_PDF) . '...';
+        }
+        return "\n--- Content of " . $pdf['name'] . " ---\n" . $text . "\n";
     }
 
     /**
@@ -219,13 +371,19 @@ Si hay múltiples PDFs relevantes, menciona todos con sus respectivas ubicacione
      * @return array Response.
      */
     private static function process_with_ai_cached($question, $courseid, $pdfs) {
-        // Get cached PDFs information.
-        $cachedpdfs = pdf_indexer::get_cached_pdfs($courseid);
+        // Cached text only for PDFs this user can see in this course.
+        $visiblecmids = [];
+        foreach ($pdfs as $pdf) {
+            $visiblecmids[$pdf['cmid']] = true;
+        }
+        $cachedpdfs = pdf_indexer::get_cached_pdfs($courseid, array_keys($visiblecmids));
 
         if (empty($cachedpdfs)) {
             return [
                 'success' => false,
                 'message' => get_string('nopdfsavailable', 'block_helpai'),
+                'aiused' => false,
+                'outcome' => question_log::OUTCOME_NO_PDFS,
             ];
         }
 
@@ -235,26 +393,7 @@ Si hay múltiples PDFs relevantes, menciona todos con sus respectivas ubicacione
         // System message.
         $messages[] = [
             'role' => 'system',
-            'content' => "Eres un asistente de estudio para un curso de Moodle. Tu objetivo es GUIAR a los estudiantes para que encuentren la información por sí mismos, actuando como un tutor que les indica exactamente dónde buscar.
-
-REGLAS IMPORTANTES:
-1. NO respondas la pregunta directamente - tu trabajo es indicar DÓNDE encontrar la respuesta
-2. Analiza las previsualizaciones de contenido de los PDFs para identificar información relevante
-3. Proporciona detalles específicos sobre la ubicación: capítulos, secciones, temas, partes del documento
-4. Basándote en el contenido que ves, menciona qué temas/conceptos específicos están en esa parte
-5. Si puedes identificar la estructura (inicio, desarrollo, conclusión), menciónalo
-6. Usa un tono amigable, motivador y de apoyo como un profesor que guía al estudiante
-
-Formato de respuesta ideal:
-'La información que buscas sobre [tema] se encuentra en el documento \"[PDF Name]\".
-
-Específicamente, busca en:
-- [Capítulo/Sección identificada en el contenido]: Aquí encontrarás información sobre [detalles específicos que viste en la preview]
-- [Otra parte si aplica]: Esta sección trata sobre [más detalles basados en la preview]
-
-Te recomiendo que leas [contexto adicional] para tener una comprensión completa del tema. ¡Ánimo con tu estudio!'
-
-Si hay múltiples PDFs relevantes, menciona todos con sus respectivas ubicaciones específicas.",
+            'content' => self::get_system_prompt(),
         ];
 
         // Build user message with PDF content previews.
@@ -265,10 +404,12 @@ Si hay múltiples PDFs relevantes, menciona todos con sus respectivas ubicacione
             $usermessage .= $idx . ". PDF Name: " . $pdf->pdfname . "\n";
             $usermessage .= "   Filename: " . $pdf->filename . "\n";
 
-            // Include content preview (first 1000 characters).
             if (!empty($pdf->content)) {
-                $preview = substr($pdf->content, 0, 1000);
-                $usermessage .= "   Content preview: " . $preview . "...\n";
+                $preview = $pdf->content;
+                if (\core_text::strlen($preview) > self::MAX_TEXT_PER_PDF) {
+                    $preview = \core_text::substr($preview, 0, self::MAX_TEXT_PER_PDF) . '...';
+                }
+                $usermessage .= "   Content: " . $preview . "\n";
             }
             $usermessage .= "\n";
             $idx++;
@@ -291,16 +432,21 @@ Si hay múltiples PDFs relevantes, menciona todos con sus respectivas ubicacione
         $response = self::call_openai_api($messages, $model);
 
         if (!$response['success']) {
+            $response['aiused'] = true;
+            $response['outcome'] = question_log::OUTCOME_ERROR;
             return $response;
         }
 
         // Parse response.
         $result = self::parse_ai_response_from_cache($response['response'], $cachedpdfs);
+        $refusal = self::apply_refusal_marker($result['message']);
 
         return [
             'success' => true,
-            'message' => $result['message'],
-            'pdfs' => $result['pdfs'],
+            'message' => $refusal['message'],
+            'pdfs' => $refusal['refused'] ? [] : $result['pdfs'],
+            'aiused' => true,
+            'outcome' => $refusal['refused'] ? question_log::OUTCOME_REFUSED : question_log::OUTCOME_ANSWERED,
         ];
     }
 
@@ -325,8 +471,8 @@ Si hay múltiples PDFs relevantes, menciona todos con sus respectivas ubicacione
         $requestbody = [
             'model' => $model,
             'messages' => $messages,
-            'temperature' => 0.7,
-            'max_tokens' => 1200, // Increased for detailed study guidance responses.
+            'temperature' => 0.2,
+            'max_tokens' => 1200,
         ];
 
         $jsonbody = json_encode($requestbody);
@@ -441,7 +587,7 @@ Si hay múltiples PDFs relevantes, menciona todos con sus respectivas ubicacione
      * @return array Result with schema.
      */
     public static function generate_pdf_schema($cmid, $courseid) {
-        global $DB;
+        global $USER;
 
         try {
             // Check if OpenAI is configured.
@@ -453,8 +599,8 @@ Si hay múltiples PDFs relevantes, menciona todos con sus respectivas ubicacione
                 ];
             }
 
-            // Get the PDF details.
-            $pdfs = pdf_processor::get_course_pdfs($courseid);
+            // Get the PDF details the current user is allowed to see.
+            $pdfs = pdf_processor::get_course_pdfs($courseid, $USER->id);
             $targetpdf = null;
 
             foreach ($pdfs as $pdf) {

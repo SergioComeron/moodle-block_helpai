@@ -18,7 +18,7 @@
  * External service for processing questions.
  *
  * @package    block_helpai
- * @copyright  2025 Your Name
+ * @copyright  2025–2026 Sergio Comerón
  * @license    http://www.gnu.org/copyleft/gpl.html GNU GPL v3 or later
  */
 
@@ -30,6 +30,7 @@ use core_external\external_value;
 use core_external\external_single_structure;
 use core_external\external_multiple_structure;
 use block_helpai\ai_handler;
+use block_helpai\question_log;
 
 /**
  * External service to process user questions.
@@ -58,7 +59,7 @@ class process_question extends external_api {
     public static function execute($courseid, $question) {
         global $USER, $CFG, $DB;
 
-        // Debug logging.
+        // Debug logging. Never log the site API key.
         if ($CFG->debugdeveloper) {
             debugging('HelpAI: courseid=' . $courseid . ', question=' . $question, DEBUG_DEVELOPER);
         }
@@ -74,7 +75,26 @@ class process_question extends external_api {
         self::validate_context($context);
         require_capability('block/helpai:askquestion', $context);
 
-        // Save user question to history.
+        // Enforce the student daily cap before calling OpenAI.
+        if (question_log::has_reached_daily_limit($USER->id, $params['courseid'], $context)) {
+            $limit = question_log::get_daily_limit();
+            $message = get_string('dailylimitreached', 'block_helpai', $limit);
+            question_log::log(
+                $USER->id,
+                $params['courseid'],
+                $params['question'],
+                $message,
+                false,
+                question_log::OUTCOME_LIMIT_HIT
+            );
+            return [
+                'success' => false,
+                'message' => $message,
+                'pdfs' => [],
+            ];
+        }
+
+        // Save user question to personal chat history.
         $userhistory = new \stdClass();
         $userhistory->userid = $USER->id;
         $userhistory->courseid = $params['courseid'];
@@ -86,17 +106,6 @@ class process_question extends external_api {
         // Process the question.
         $result = ai_handler::process_question($params['question'], $params['courseid'], $USER->id);
 
-        // Save assistant response to history.
-        if (isset($result['message']) && !empty($result['message'])) {
-            $assistanthistory = new \stdClass();
-            $assistanthistory->userid = $USER->id;
-            $assistanthistory->courseid = $params['courseid'];
-            $assistanthistory->role = 'assistant';
-            $assistanthistory->message = $result['message'];
-            $assistanthistory->timecreated = time();
-            $DB->insert_record('block_helpai_history', $assistanthistory);
-        }
-
         // Ensure required fields are present and properly typed.
         if (!isset($result['success'])) {
             $result['success'] = false;
@@ -107,9 +116,33 @@ class process_question extends external_api {
         if (!isset($result['pdfs'])) {
             $result['pdfs'] = [];
         }
-
-        // Ensure success is boolean.
         $result['success'] = (bool)$result['success'];
+
+        $outcome = question_log::outcome_from_result($result);
+        $aiused = !empty($result['aiused']);
+
+        question_log::log(
+            $USER->id,
+            $params['courseid'],
+            $params['question'],
+            $result['message'],
+            $aiused,
+            $outcome
+        );
+
+        // Save assistant response to personal chat history.
+        if (!empty($result['message'])) {
+            $assistanthistory = new \stdClass();
+            $assistanthistory->userid = $USER->id;
+            $assistanthistory->courseid = $params['courseid'];
+            $assistanthistory->role = 'assistant';
+            $assistanthistory->message = $result['message'];
+            $assistanthistory->timecreated = time();
+            $DB->insert_record('block_helpai_history', $assistanthistory);
+        }
+
+        // Do not leak internal flags through the webservice return.
+        unset($result['aiused'], $result['outcome']);
 
         return $result;
     }
