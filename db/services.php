@@ -29,7 +29,7 @@ $functions = [
         'classname'   => 'block_helpai\external\process_question',
         'methodname'  => 'execute',
         'description' => 'Process a user question and return AI response',
-        'type'        => 'read',
+        'type'        => 'write',
         'ajax'        => true,
         'loginrequired' => true,
     ],

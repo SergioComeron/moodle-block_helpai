@@ -24,8 +24,8 @@
 
 defined('MOODLE_INTERNAL') || die();
 
-$plugin->version   = 2026081902;        // The current plugin version (Date: YYYYMMDDXX).
+$plugin->version   = 2026081903;        // The current plugin version (Date: YYYYMMDDXX).
 $plugin->requires  = 2024100100;        // Requires Moodle 4.5 or later.
 $plugin->component = 'block_helpai';    // Full name of the plugin (used for diagnostics).
 $plugin->maturity  = MATURITY_BETA;
-$plugin->release   = '1.5.2';
+$plugin->release   = '1.5.3';

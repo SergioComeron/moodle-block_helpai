@@ -76,6 +76,28 @@ final class ai_handler_test extends \advanced_testcase {
     }
 
     /**
+     * OpenAI calls must have a connect timeout shorter than the request timeout.
+     */
+    public function test_openai_curl_timeouts(): void {
+        $options = ai_handler::openai_curl_options();
+        $this->assertSame(ai_handler::CONNECT_TIMEOUT, $options['CURLOPT_CONNECTTIMEOUT']);
+        $this->assertSame(ai_handler::REQUEST_TIMEOUT, $options['CURLOPT_TIMEOUT']);
+        $this->assertGreaterThan($options['CURLOPT_CONNECTTIMEOUT'], $options['CURLOPT_TIMEOUT']);
+    }
+
+    /**
+     * Asking is a write: it stores history and calls a paid API.
+     */
+    public function test_process_question_webservice_is_write(): void {
+        global $CFG;
+        $functions = [];
+        require $CFG->dirroot . '/blocks/helpai/db/services.php';
+        $this->assertSame('write', $functions['block_helpai_process_question']['type']);
+        $this->assertSame('write', $functions['block_helpai_generate_schema']['type']);
+        $this->assertSame('write', $functions['block_helpai_clear_history']['type']);
+    }
+
+    /**
      * AI-only messages attach stored PDFs, not just their titles.
      */
     public function test_build_direct_ai_messages_attaches_files(): void {

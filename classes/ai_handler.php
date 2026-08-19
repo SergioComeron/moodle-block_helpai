@@ -40,6 +40,12 @@ class ai_handler {
     /** Characters of extracted text sent per PDF when files are not attached. */
     const MAX_TEXT_PER_PDF = 20000;
 
+    /** Seconds to wait for a TCP connection to OpenAI. */
+    const CONNECT_TIMEOUT = 15;
+
+    /** Seconds for the whole OpenAI request (includes PDF analysis). */
+    const REQUEST_TIMEOUT = 90;
+
     /**
      * Process a question and return which PDF contains the answer.
      *
@@ -448,6 +454,18 @@ RULES:
     }
 
     /**
+     * Timeouts for the Moodle curl client talking to OpenAI.
+     *
+     * @return array
+     */
+    public static function openai_curl_options() {
+        return [
+            'CURLOPT_CONNECTTIMEOUT' => self::CONNECT_TIMEOUT,
+            'CURLOPT_TIMEOUT' => self::REQUEST_TIMEOUT,
+        ];
+    }
+
+    /**
      * Call OpenAI API.
      *
      * @param array $messages Array of messages for the chat.
@@ -455,6 +473,9 @@ RULES:
      * @return array Response from OpenAI.
      */
     private static function call_openai_api($messages, $model) {
+        global $CFG;
+        require_once($CFG->libdir . '/filelib.php');
+
         $apikey = get_config('block_helpai', 'openai_apikey');
 
         if (empty($apikey)) {
@@ -474,28 +495,26 @@ RULES:
 
         $jsonbody = json_encode($requestbody);
 
-        // Initialize cURL.
-        $ch = curl_init('https://api.openai.com/v1/chat/completions');
-        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-        curl_setopt($ch, CURLOPT_POST, true);
-        curl_setopt($ch, CURLOPT_POSTFIELDS, $jsonbody);
-        curl_setopt($ch, CURLOPT_HTTPHEADER, [
+        $curl = new \curl();
+        $curl->setHeader([
             'Content-Type: application/json',
             'Authorization: Bearer ' . $apikey,
         ]);
+        $response = $curl->post(
+            'https://api.openai.com/v1/chat/completions',
+            $jsonbody,
+            self::openai_curl_options()
+        );
 
-        // Execute request.
-        $response = curl_exec($ch);
-        $httpcode = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        $curlerror = curl_error($ch);
-        curl_close($ch);
-
-        if ($curlerror) {
+        if (!empty($curl->error) || $curl->get_errno()) {
             return [
                 'success' => false,
-                'message' => get_string('aierror', 'block_helpai') . ': cURL error - ' . $curlerror,
+                'message' => get_string('aierror', 'block_helpai') . ': ' . $curl->error,
             ];
         }
+
+        $info = $curl->get_info();
+        $httpcode = (int)($info['http_code'] ?? 0);
 
         if ($httpcode !== 200) {
             $errordata = json_decode($response, true);

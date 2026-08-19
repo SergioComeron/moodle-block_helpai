@@ -3,7 +3,7 @@
 A Moodle 4.5+ block (`block_helpai`) that lets students ask questions about the PDF resources in **this course**. The site administrator pastes an OpenAI API key; the institution pays OpenAI. There is no author-side billing, licence server, Stripe integration, or phone-home.
 
 **Owner:** Sergio Comerón  
-**Release:** 1.5.2 (MATURITY_BETA)
+**Release:** 1.5.3 (MATURITY_BETA)
 
 ---
 

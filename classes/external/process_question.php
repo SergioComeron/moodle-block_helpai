@@ -57,14 +57,9 @@ class process_question extends external_api {
      * @return array Response data.
      */
     public static function execute($courseid, $question) {
-        global $USER, $CFG, $DB;
+        global $USER, $DB;
 
-        // Debug logging. Never log the site API key.
-        if ($CFG->debugdeveloper) {
-            debugging('HelpAI: courseid=' . $courseid . ', question=' . $question, DEBUG_DEVELOPER);
-        }
-
-        // Validate parameters.
+        // Validate parameters. Do not log the question text.
         $params = self::validate_parameters(self::execute_parameters(), [
             'courseid' => $courseid,
             'question' => $question,
