@@ -139,4 +139,57 @@ final class ai_handler_test extends \advanced_testcase {
         $this->assertSame('conquista_america.pdf', $files[0]['file']['filename']);
         $this->assertStringContainsString('quién descubrió America?', $parts[count($parts) - 1]['text']);
     }
+
+    /**
+     * Schema generation attaches the PDF file instead of requiring extracted text.
+     */
+    public function test_build_schema_messages_attaches_file(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        $generator = $this->getDataGenerator();
+        $course = $generator->create_course();
+        $user = $generator->create_user();
+        $generator->enrol_user($user->id, $course->id, 'student');
+
+        $resource = $generator->create_module('resource', [
+            'course' => $course->id,
+            'name' => 'La conquista de América',
+        ]);
+        $cm = get_coursemodule_from_instance('resource', $resource->id);
+        $context = \context_module::instance($cm->id);
+        get_file_storage()->create_file_from_string([
+            'contextid' => $context->id,
+            'component' => 'mod_resource',
+            'filearea' => 'content',
+            'itemid' => 0,
+            'filepath' => '/',
+            'filename' => 'conquista_america.pdf',
+            'mimetype' => 'application/pdf',
+        ], '%PDF-1.4 fake-conquista');
+
+        $pdfs = pdf_processor::get_course_pdfs($course->id, $user->id);
+        $this->assertCount(1, $pdfs);
+
+        $built = ai_handler::build_schema_messages($pdfs[0], true);
+        $this->assertTrue($built['usable']);
+        $parts = $built['messages'][1]['content'];
+        $files = array_values(array_filter($parts, static function($part) {
+            return ($part['type'] ?? '') === 'file';
+        }));
+        $this->assertCount(1, $files);
+        $this->assertSame('conquista_america.pdf', $files[0]['file']['filename']);
+    }
+
+    /**
+     * Schema generation refuses a course-module the user cannot see.
+     */
+    public function test_generate_pdf_schema_requires_visible_pdf(): void {
+        $this->resetAfterTest();
+        $this->setAdminUser();
+        set_config('openai_apikey', 'sk-test', 'block_helpai');
+        $course = $this->getDataGenerator()->create_course();
+        $result = ai_handler::generate_pdf_schema(99999, $course->id);
+        $this->assertFalse($result['success']);
+        $this->assertSame(get_string('nopdfs', 'block_helpai'), $result['message']);
+    }
 }

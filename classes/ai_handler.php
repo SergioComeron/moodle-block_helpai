@@ -596,6 +596,74 @@ RULES:
     }
 
     /**
+     * Chat messages for outlining one PDF (file attach, else extracted text).
+     *
+     * @param array $pdf PDF info from pdf_processor::get_course_pdfs().
+     * @param bool $attachfiles Try native PDF file parts.
+     * @return array{messages:array,usable:bool}
+     */
+    public static function build_schema_messages(array $pdf, $attachfiles) {
+        $system = "Eres un asistente especializado en crear esquemas/resúmenes estructurados de documentos PDF académicos.
+
+Tu tarea es analizar el contenido del PDF y crear un esquema detallado y estructurado que incluya:
+
+1. **Título del documento**
+2. **Introducción/Resumen general** (2-3 líneas)
+3. **Estructura principal**:
+   - Capítulos o secciones principales
+   - Subsecciones importantes
+   - Temas clave tratados en cada sección
+4. **Conceptos importantes** mencionados
+5. **Conclusiones** (si las hay)
+
+Formato del esquema:
+- Usa encabezados claros (con ##, ###)
+- Usa listas numeradas para capítulos y viñetas para subsecciones
+- Sé específico sobre QUÉ se trata en cada sección
+- Incluye detalles que ayuden al estudiante a navegar el documento
+- Usa un lenguaje claro y conciso en el mismo idioma del documento
+
+El esquema debe ser lo suficientemente detallado para que un estudiante entienda la estructura completa del documento sin tenerlo que leer completo.";
+
+        $intro = "Por favor, genera un esquema detallado del siguiente documento PDF:\n\n" .
+            "Nombre: {$pdf['name']}\n" .
+            "Archivo: {$pdf['filename']}\n";
+
+        $parts = [];
+        $usable = false;
+
+        if ($attachfiles && self::can_attach_pdf((int)$pdf['filesize'], 0)) {
+            $stored = pdf_processor::get_stored_file($pdf);
+            $binary = $stored ? $stored->get_content() : '';
+            if ($binary !== '' && $binary !== false) {
+                $parts[] = ['type' => 'text', 'text' => $intro . "\nThe PDF file is attached. Use its content.\n"];
+                $parts[] = self::make_pdf_file_part($pdf['filename'], $binary);
+                $usable = true;
+            }
+        }
+
+        if (!$usable) {
+            $text = '';
+            if (!empty($pdf['contenthash'])) {
+                $text = pdf_processor::extract_pdf_text($pdf['contenthash']);
+            }
+            $block = self::format_extracted_text($pdf, $text);
+            $empty = ($text === '' || $text === get_string('pdftextnotavailable', 'block_helpai')
+                || $text === get_string('pdftoolnotavailable', 'block_helpai'));
+            $parts[] = ['type' => 'text', 'text' => $intro . $block];
+            $usable = !$empty;
+        }
+
+        return [
+            'usable' => $usable,
+            'messages' => [
+                ['role' => 'system', 'content' => $system],
+                ['role' => 'user', 'content' => $parts],
+            ],
+        ];
+    }
+
+    /**
      * Generate a schema/outline for a PDF.
      *
      * @param int $cmid Course module ID.
@@ -633,71 +701,33 @@ RULES:
                 ];
             }
 
-            // Get cached PDF content.
-            $cachedpdfs = pdf_indexer::get_cached_pdfs($courseid);
-            $pdfcontent = null;
-
-            foreach ($cachedpdfs as $cached) {
-                if ($cached->cmid == $cmid) {
-                    $pdfcontent = $cached->content;
-                    break;
-                }
+            $model = get_config('block_helpai', 'openai_model');
+            if (empty($model)) {
+                $model = 'gpt-4o';
             }
 
-            if (empty($pdfcontent)) {
+            $attachfiles = self::model_supports_pdf_files($model)
+                && self::can_attach_pdf((int)$targetpdf['filesize'], 0);
+            $built = self::build_schema_messages($targetpdf, $attachfiles);
+            if (!$built['usable']) {
                 return [
                     'success' => false,
                     'message' => get_string('pdftextnotavailable', 'block_helpai'),
                 ];
             }
 
-            // Build the prompt for schema generation.
-            $model = get_config('block_helpai', 'openai_model');
-            if (empty($model)) {
-                $model = 'gpt-4o';
+            $result = self::call_openai_api($built['messages'], $model);
+
+            if (!$result['success'] && $attachfiles && self::file_input_rejected($result['message'] ?? '')) {
+                $built = self::build_schema_messages($targetpdf, false);
+                if (!$built['usable']) {
+                    return [
+                        'success' => false,
+                        'message' => get_string('pdftextnotavailable', 'block_helpai'),
+                    ];
+                }
+                $result = self::call_openai_api($built['messages'], $model);
             }
-
-            $messages = [];
-            $messages[] = [
-                'role' => 'system',
-                'content' => "Eres un asistente especializado en crear esquemas/resúmenes estructurados de documentos PDF académicos.
-
-Tu tarea es analizar el contenido del PDF y crear un esquema detallado y estructurado que incluya:
-
-1. **Título del documento**
-2. **Introducción/Resumen general** (2-3 líneas)
-3. **Estructura principal**:
-   - Capítulos o secciones principales
-   - Subsecciones importantes
-   - Temas clave tratados en cada sección
-4. **Conceptos importantes** mencionados
-5. **Conclusiones** (si las hay)
-
-Formato del esquema:
-- Usa encabezados claros (con ##, ###)
-- Usa listas numeradas para capítulos y viñetas para subsecciones
-- Sé específico sobre QUÉ se trata en cada sección
-- Incluye detalles que ayuden al estudiante a navegar el documento
-- Usa un lenguaje claro y conciso en español
-
-El esquema debe ser lo suficientemente detallado para que un estudiante entienda la estructura completa del documento sin tenerlo que leer completo.",
-            ];
-
-            // Add the PDF content.
-            // Limit content to first 15000 characters to avoid token limits.
-            $contentpreview = substr($pdfcontent, 0, 15000);
-
-            $messages[] = [
-                'role' => 'user',
-                'content' => "Por favor, genera un esquema detallado del siguiente documento PDF:\n\n" .
-                             "Nombre: {$targetpdf['name']}\n" .
-                             "Archivo: {$targetpdf['filename']}\n\n" .
-                             "Contenido del PDF:\n{$contentpreview}" .
-                             (strlen($pdfcontent) > 15000 ? "\n\n[El documento continúa...]" : ""),
-            ];
-
-            // Call OpenAI API.
-            $result = self::call_openai_api($messages, $model);
 
             if ($result['success']) {
                 return [
@@ -705,12 +735,12 @@ El esquema debe ser lo suficientemente detallado para que un estudiante entienda
                     'outline' => $result['response'],
                     'pdfname' => $targetpdf['name'],
                 ];
-            } else {
-                return [
-                    'success' => false,
-                    'message' => $result['error'] ?? get_string('aierror', 'block_helpai'),
-                ];
             }
+
+            return [
+                'success' => false,
+                'message' => $result['message'] ?? get_string('aierror', 'block_helpai'),
+            ];
 
         } catch (\Exception $e) {
             return [

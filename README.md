@@ -3,7 +3,7 @@
 A Moodle 4.5+ block (`block_helpai`) that lets students ask questions about the PDF resources in **this course**. The site administrator pastes an OpenAI API key; the institution pays OpenAI. There is no author-side billing, licence server, Stripe integration, or phone-home.
 
 **Owner:** Sergio Comerón  
-**Release:** 1.5.3 (MATURITY_BETA)
+**Release:** 1.5.4 (MATURITY_BETA)
 
 ---
 
@@ -65,7 +65,7 @@ Students still have a personal chat history (`block_helpai_history`) they can cl
 - Two search modes:
   - **AI only** (default): list every PDF title, then attach only the most relevant files (default 3, 20 MB total). GPT-4o / GPT-4 Turbo. No `pdftotext` required. If the model rejects file input, falls back to extracted text.
   - **Hybrid**: local keyword search first, then AI with extracted text. Requires `pdftotext` for indexing.
-- PDF schemas/outlines (existing)
+- PDF schemas/outlines: attach the PDF (AI-only) or use extracted text (hybrid); no longer require the text cache
 - Daily student cap and teacher question log (1.5.0)
 
 ## Requirements
