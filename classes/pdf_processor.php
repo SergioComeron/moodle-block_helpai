@@ -99,6 +99,7 @@ class pdf_processor {
             $pdfs[] = [
                 'id' => $resource->id,
                 'cmid' => $resource->cmid,
+                'fileid' => (int)$resource->fileid,
                 'name' => $resource->name,
                 'filename' => $resource->filename,
                 'contenthash' => $resource->contenthash,
@@ -125,25 +126,42 @@ class pdf_processor {
     }
 
     /**
+     * Stored file for a course PDF row from get_course_pdfs().
+     *
+     * @param array $pdf PDF info (fileid and/or contenthash).
+     * @return \stored_file|null
+     */
+    public static function get_stored_file(array $pdf) {
+        global $DB;
+
+        $fs = get_file_storage();
+        if (!empty($pdf['fileid'])) {
+            $stored = $fs->get_file_by_id((int)$pdf['fileid']);
+            if ($stored) {
+                return $stored;
+            }
+        }
+        if (empty($pdf['contenthash'])) {
+            return null;
+        }
+        $record = $DB->get_record_select(
+            'files',
+            'contenthash = :hash AND filename <> :dot AND filesize > 0',
+            ['hash' => $pdf['contenthash'], 'dot' => '.'],
+            '*',
+            IGNORE_MULTIPLE
+        );
+        return $record ? $fs->get_file_by_id($record->id) : null;
+    }
+
+    /**
      * Extract text content from a PDF file.
      *
      * @param string $contenthash File content hash.
      * @return string Extracted text content.
      */
     public static function extract_pdf_text($contenthash) {
-        global $DB;
-
-        $fs = get_file_storage();
-
-        // Get file by content hash.
-        $files = $DB->get_records('files', ['contenthash' => $contenthash, 'filename' => ['!=' => '.']]);
-
-        if (empty($files)) {
-            return '';
-        }
-
-        $file = reset($files);
-        $storedfile = $fs->get_file_by_id($file->id);
+        $storedfile = self::get_stored_file(['contenthash' => $contenthash]);
 
         if (!$storedfile) {
             return '';
@@ -241,12 +259,29 @@ class pdf_processor {
 
             $text = '';
 
-            // Method 1: Extract text from compressed streams (FlateDecode).
-            if (preg_match_all('/<<.*?\/Filter\s*\/FlateDecode.*?>>.*?stream\s*\n(.*?)\n\s*endstream/s', $content, $matches)) {
+            // Method 1a: ASCII85 + FlateDecode (ReportLab and similar).
+            if (preg_match_all(
+                '/\/Filter\s*\[\s*\/ASCII85Decode\s*\/FlateDecode\s*\].*?stream\s*\r?\n(.*?)\r?\nendstream/s',
+                $content,
+                $matches
+            )) {
                 foreach ($matches[1] as $stream) {
-                    $decoded = @gzuncompress($stream);
+                    $decoded85 = self::ascii85_decode($stream);
+                    $decoded = $decoded85 !== '' ? @gzuncompress($decoded85) : false;
                     if ($decoded !== false) {
                         $text .= self::decode_pdf_stream($decoded) . ' ';
+                    }
+                }
+            }
+
+            // Method 1b: Extract text from compressed streams (FlateDecode).
+            if (strlen($text) < 50) {
+                if (preg_match_all('/<<.*?\/Filter\s*\/FlateDecode.*?>>.*?stream\s*\n(.*?)\n\s*endstream/s', $content, $matches)) {
+                    foreach ($matches[1] as $stream) {
+                        $decoded = @gzuncompress($stream);
+                        if ($decoded !== false) {
+                            $text .= self::decode_pdf_stream($decoded) . ' ';
+                        }
                     }
                 }
             }
@@ -302,6 +337,48 @@ class pdf_processor {
         } catch (\Exception $e) {
             return '';
         }
+    }
+
+    /**
+     * Decode Adobe ASCII85 (used by ReportLab before FlateDecode).
+     *
+     * @param string $data ASCII85 payload, optionally ending in ~>.
+     * @return string Binary data, or '' on failure.
+     */
+    public static function ascii85_decode($data) {
+        $data = preg_replace('/\s+/', '', $data);
+        $data = str_replace('~>', '', $data);
+        if ($data === '' || $data === null) {
+            return '';
+        }
+
+        $out = '';
+        $len = strlen($data);
+        $i = 0;
+        while ($i < $len) {
+            if ($data[$i] === 'z') {
+                $out .= "\0\0\0\0";
+                $i++;
+                continue;
+            }
+            $chunk = substr($data, $i, 5);
+            $n = strlen($chunk);
+            if ($n < 2) {
+                break;
+            }
+            $padded = $chunk . str_repeat('u', 5 - $n);
+            $val = 0;
+            for ($j = 0; $j < 5; $j++) {
+                $c = ord($padded[$j]);
+                if ($c < 33 || $c > 117) {
+                    return '';
+                }
+                $val = $val * 85 + ($c - 33);
+            }
+            $out .= substr(pack('N', $val), 0, $n - 1);
+            $i += $n;
+        }
+        return $out;
     }
 
     /**

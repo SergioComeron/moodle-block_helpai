@@ -63,8 +63,8 @@ Students still have a personal chat history (`block_helpai_history`) they can cl
 
 - Chat UI for questions about course PDFs
 - Two search modes:
-  - **AI only** (default): send the course PDF list to OpenAI. No `pdftotext` required.
-  - **Hybrid**: local keyword search first, then AI. Requires `pdftotext` for indexing.
+  - **AI only** (default): attach the course PDF files to OpenAI (GPT-4o / GPT-4 Turbo). No `pdftotext` required. If the model rejects file input, falls back to extracted text.
+  - **Hybrid**: local keyword search first, then AI with extracted text. Requires `pdftotext` for indexing.
 - PDF schemas/outlines (existing)
 - Daily student cap and teacher question log (1.5.0)
 
