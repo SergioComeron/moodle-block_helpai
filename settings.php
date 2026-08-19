@@ -25,6 +25,12 @@
 defined('MOODLE_INTERNAL') || die();
 
 if ($ADMIN->fulltree) {
+    $settings->add(new admin_setting_heading(
+        'block_helpai/privacyheading',
+        get_string('privacyheading', 'block_helpai'),
+        get_string('privacyheading_desc', 'block_helpai')
+    ));
+
     // Site-owned OpenAI API key (BYOK). Stored as a password field; never logged.
     $settings->add(new admin_setting_configpasswordunmask(
         'block_helpai/openai_apikey',

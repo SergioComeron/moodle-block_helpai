@@ -72,6 +72,13 @@ class provider implements
             'privacy:metadata:block_helpai_questions'
         );
 
+        // Questions and course PDFs are sent to OpenAI. User id, name and email are not.
+        $collection->add_external_location_link('openai', [
+            'prompttext' => 'privacy:metadata:openai:prompttext',
+            'pdfs' => 'privacy:metadata:openai:pdfs',
+            'model' => 'privacy:metadata:openai:model',
+        ], 'privacy:metadata:openai');
+
         return $collection;
     }
 

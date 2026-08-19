@@ -116,7 +116,13 @@ $string['outcome_error'] = 'Error';
 $string['outcome_no_pdfs'] = 'No PDFs';
 
 // Privacy.
-$string['privacy:metadata'] = 'The HelpAI block stores personal chat history and a course question log.';
+$string['privacy:metadata'] = 'The HelpAI block stores personal chat history and a course question log. When a student asks a question, the question text and the visible PDF files of that course are sent to OpenAI.';
+$string['privacy:metadata:openai'] = 'Question text and the PDF files (or extracted text) from this course are sent to the OpenAI API (api.openai.com) so a reply can be generated. User ID, name and email are not sent. How long OpenAI keeps the data depends on the institution\'s OpenAI account. This plugin does not send data to the plugin author.';
+$string['privacy:metadata:openai:prompttext'] = 'The student\'s question, or a request to outline a PDF.';
+$string['privacy:metadata:openai:pdfs'] = 'The PDF files from this course that the user is allowed to see, attached as files or as extracted text.';
+$string['privacy:metadata:openai:model'] = 'The OpenAI model configured by the site administrator.';
+$string['privacyheading'] = 'External processing (OpenAI)';
+$string['privacyheading_desc'] = 'When a student uses HelpAI, their question and the PDF files they can see in that course are sent to OpenAI with the site API key. Identity (user id, name, email) is not included. Retention is governed by the institution\'s OpenAI account, not by this plugin. HelpAI does not send data to the author.';
 $string['privacy:metadata:block_helpai_history'] = 'HelpAI personal chat conversation history';
 $string['privacy:metadata:block_helpai_history:userid'] = 'User ID who asked the question';
 $string['privacy:metadata:block_helpai_history:courseid'] = 'Course ID where the question was asked';

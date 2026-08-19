@@ -3,7 +3,7 @@
 A Moodle 4.5+ block (`block_helpai`) that lets students ask questions about the PDF resources in **this course**. The site administrator pastes an OpenAI API key; the institution pays OpenAI. There is no author-side billing, licence server, Stripe integration, or phone-home.
 
 **Owner:** Sergio Comerón  
-**Release:** 1.5.0 (MATURITY_BETA)
+**Release:** 1.5.1 (MATURITY_BETA)
 
 ---
 
@@ -103,10 +103,18 @@ brew install poppler
 
 ## Privacy
 
-The privacy provider exports and deletes:
+Stored in Moodle (export/delete via the privacy API):
 
 - `block_helpai_history` — personal chat transcript
 - `block_helpai_questions` — course question log
+
+Sent to **OpenAI** (`api.openai.com`) on each ask or schema generation, using the site API key:
+
+- the student's question (or a “outline this PDF” request)
+- the PDF files the user can see in that course (as file attachments or extracted text)
+- the configured model name
+
+User id, name and email are **not** sent. Retention at OpenAI is governed by the institution's OpenAI account. The plugin does not send data to the author. This transfer is declared in the privacy metadata (`add_external_location_link`) and shown as an admin heading under **Plugins → Blocks → HelpAI**.
 
 ## Scheduled task
 
@@ -145,3 +153,7 @@ Cada pregunta se guarda (curso, usuario, pregunta, respuesta mostrada, si se us�
 ## Dentro del curso
 
 Solo se usan PDF que el estudiante puede ver en ese curso. Si los materiales no contienen la respuesta, el asistente lo dice y no inventa.
+
+## Privacidad
+
+En Moodle se guardan el chat personal y el registro de preguntas. A OpenAI se envían la pregunta y los PDF visibles del curso (no el id, nombre ni correo del usuario). La retención en OpenAI la marca la cuenta de la institución.
