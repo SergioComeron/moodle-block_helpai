@@ -3,7 +3,7 @@
 A Moodle 4.5+ block (`block_helpai`) that lets students ask questions about the PDF resources in **this course**. The site administrator pastes an OpenAI API key; the institution pays OpenAI. There is no author-side billing, licence server, Stripe integration, or phone-home.
 
 **Owner:** Sergio Comerón  
-**Release:** 1.5.4 (MATURITY_BETA)
+**Release:** 1.5.5 (MATURITY_BETA)
 
 ---
 
@@ -17,6 +17,30 @@ HelpAI uses a **site-level** OpenAI key stored in plugin settings (`block_helpai
 - This plugin does **not** sell licences, meter usage for the author, or send telemetry.
 
 Configure it at: **Site administration → Plugins → Blocks → HelpAI**.
+
+---
+
+## What it costs (OpenAI, not this plugin)
+
+The institution pays **OpenAI** in USD. HelpAI does not bill, meter, or take a cut. Prices change; check [OpenAI’s pricing](https://platform.openai.com/docs/pricing). Figures below use **GPT-4o** (the plugin default) as of 2026: about **$2.50 / 1M input tokens** and **$10 / 1M output tokens**. Output is capped at 1 200 tokens (~$0.01). **Input is the expensive part** because each ask attaches up to 3 PDFs.
+
+Rough cost **per student question** (AI-only):
+
+| What is sent | Ballpark |
+|---|---|
+| 1–2 small PDFs (a few pages) | **$0.02–0.05** |
+| 2–3 typical lecture PDFs (tens of pages) | **$0.10–0.25** |
+| Near the 3-file / 20 MB cap | **$0.50+** |
+
+Generating a **schema** is about the same as one one-PDF question.
+
+Worked examples (order of magnitude, not a quote):
+
+- **Pilot, light use:** 100 students × 5 questions/week × $0.15 ≈ **$75/week** (~$300/month).
+- **If everyone hits the default cap of 20/day:** 100 students × 20 × $0.15 = **$300/day**. Unlikely, but that is why the cap exists.
+- Teachers with `block/helpai:viewhistory` are **not** capped; they can spend more.
+
+What actually limits spend today: daily cap (default 20), max 3 PDFs per ask, 20 MB total, and hybrid mode (local search first, no OpenAI when keywords hit). There is **no token dashboard** in the plugin; use the OpenAI usage page.
 
 ---
 
@@ -141,6 +165,26 @@ Bloque de Moodle 4.5+ para preguntar sobre los PDF **de este curso**. El adminis
 ## Trae tu propia clave (BYOK)
 
 La clave es del sitio (`block_helpai/openai_apikey`), se guarda como contraseña y no se registra en logs.
+
+## Costes (paga OpenAI, no este plugin)
+
+OpenAI factura en **USD**. Con **GPT-4o** (por defecto, precios 2026: ~2,50 $/M tokens de entrada y 10 $/M de salida) el gasto lo marcan los PDF adjuntos, no el texto de la pregunta. La salida está limitada a 1 200 tokens (~0,01 $).
+
+Por pregunta (modo Solo IA), orden de magnitud:
+
+- PDF pequeños (pocas páginas): **0,02–0,05 $**
+- 2–3 apuntes normales: **0,10–0,25 $**
+- Cerca del tope (3 ficheros / 20 MB): **0,50 $ o más**
+
+Un esquema de un PDF cuesta como una pregunta con un solo fichero.
+
+Ejemplos:
+
+- 100 alumnos × 5 preguntas/semana × 0,15 $ ≈ **75 $/semana** (~300 $/mes).
+- Si todos agotan el tope de 20/día: 100 × 20 × 0,15 $ = **300 $/día**. Por eso existe el tope.
+- Quien tiene `block/helpai:viewhistory` (profesor) **no** está limitado.
+
+Los precios cambian: [tarifa OpenAI](https://platform.openai.com/docs/pricing). El plugin no muestra tokens; hay que mirar el panel de OpenAI.
 
 ## Límite diario
 

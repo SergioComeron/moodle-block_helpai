@@ -31,6 +31,12 @@ if ($ADMIN->fulltree) {
         get_string('privacyheading_desc', 'block_helpai')
     ));
 
+    $settings->add(new admin_setting_heading(
+        'block_helpai/costheading',
+        get_string('costheading', 'block_helpai'),
+        get_string('costheading_desc', 'block_helpai')
+    ));
+
     // Site-owned OpenAI API key (BYOK). Stored as a password field; never logged.
     $settings->add(new admin_setting_configpasswordunmask(
         'block_helpai/openai_apikey',
